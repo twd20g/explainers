@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Decision Trees — Interactive Explainer</title>
+<style>
+:root {
+  --bg1:#ffffff; --bg2:#f5f4f0; --bg3:#eeece6;
+  --t1:#1a1a18; --t2:#6b6a64; --t3:#9c9a92;
+  --bdr:rgba(0,0,0,0.12); --bdr2:rgba(0,0,0,0.22);
+  --r-md:8px; --r-lg:12px;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --mono:'SFMono-Regular','Consolas','Liberation Mono',monospace;
+  --blue:#378ADD; --blue-bg:#E6F1FB; --blue-dk:#0C447C; --blue-md:#185FA5;
+  --red:#D85A30;  --red-bg:#FAECE7;  --red-dk:#712B13;  --red-md:#993C1D;
+  --green:#639922; --green-bg:#EAF3DE; --green-dk:#27500A;
+  --amber:#BA7517; --amber-bg:#FAEEDA; --amber-dk:#633806;
+  --purple:#534AB7; --purple-bg:#EEEDFE; --purple-dk:#26215C;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg1:#1e1e1c; --bg2:#2a2a28; --bg3:#323230;
+    --t1:#e8e6de; --t2:#9c9a92; --t3:#6b6a64;
+    --bdr:rgba(255,255,255,0.1); --bdr2:rgba(255,255,255,0.2);
+    --blue-bg:#0c2a44; --blue-dk:#85B7EB; --blue-md:#378ADD;
+    --red-bg:#3d1a0c;  --red-dk:#F0997B;  --red-md:#D85A30;
+    --green-bg:#162808; --green-dk:#97C459;
+    --amber-bg:#2e1c03; --amber-dk:#EF9F27;
+    --purple-bg:#16143a; --purple-dk:#AFA9EC;
+  }
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);font-size:15px;line-height:1.6;color:var(--t1);background:var(--bg3);padding:1.5rem 1rem}
+.page{max-width:800px;margin:0 auto}
+h1{font-size:21px;font-weight:500;margin-bottom:0.2rem}
+.sub{font-size:13px;color:var(--t2);margin-bottom:1.5rem}
+.card{background:var(--bg1);border:0.5px solid var(--bdr);border-radius:var(--r-lg);padding:1.25rem 1.5rem;margin-bottom:1.25rem}
+.card-title{font-size:11px;font-weight:500;color:var(--t3);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:1rem}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:1rem 0}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:1rem 0}
+.mcard{background:var(--bg2);border-radius:var(--r-md);padding:0.75rem 1rem}
+.mlabel{font-size:11px;color:var(--t2);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em}
+.mval{font-size:20px;font-weight:500;color:var(--t1);font-family:var(--mono)}
+.mval.good{color:var(--green)}
+.mval.warn{color:var(--amber)}
+.msub{font-size:11px;color:var(--t3);margin-top:2px}
+.formula{background:var(--bg2);border-radius:var(--r-md);padding:0.75rem 1rem;font-family:var(--mono);font-size:13px;line-height:1.9;color:var(--t1);margin:0.75rem 0}
+.formula .hi-blue{color:var(--blue-dk);font-weight:500}
+.formula .hi-red{color:var(--red-dk);font-weight:500}
+.formula .hi-green{color:var(--green-dk);font-weight:500}
+.formula .hi-amber{color:var(--amber-dk);font-weight:500}
+.note{font-size:12px;color:var(--t2);line-height:1.6;margin-top:8px}
+.ig-bar-wrap{margin:0.5rem 0}
+.ig-bar-track{height:12px;background:var(--bg2);border-radius:6px;overflow:hidden;margin-top:4px}
+.ig-bar-fill{height:100%;border-radius:6px;transition:width 0.3s}
+.ent-bar{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px}
+.ent-bar-label{width:120px;color:var(--t2);flex-shrink:0;text-align:right}
+.ent-bar-track{flex:1;height:8px;background:var(--bg2);border-radius:4px;overflow:hidden}
+.ent-bar-fill{height:100%;border-radius:4px;transition:width 0.3s}
+.ent-bar-val{width:44px;font-family:var(--mono);font-size:12px;color:var(--t1)}
+.interp{font-size:13px;padding:0.6rem 1rem;background:var(--bg2);border-left:3px solid var(--bdr2);margin:0.75rem 0;line-height:1.6;color:var(--t1)}
+.interp.interp-good{border-left-color:var(--green);background:var(--green-bg);color:var(--green-dk)}
+.interp.interp-warn{border-left-color:var(--amber);background:var(--amber-bg);color:var(--amber-dk)}
+.interp.interp-info{border-left-color:var(--blue);background:var(--blue-bg);color:var(--blue-dk)}
+
+/* two-tone root slider */
+.root-slider-row{display:flex;align-items:center;gap:8px;margin:0.25rem 0 0}
+.root-slider-row input[type=range]{
+  flex:1;appearance:none;-webkit-appearance:none;
+  height:8px;border-radius:4px;cursor:pointer;outline:none;margin:0;
+}
+.root-slider-row input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+  background:var(--bg1);border:2px solid var(--t2);cursor:pointer;
+  margin-top:-6px;
+}
+.root-slider-row input[type=range]::-moz-range-thumb{
+  width:20px;height:20px;border-radius:50%;
+  background:var(--bg1);border:2px solid var(--t2);cursor:pointer;
+}
+.root-slider-row input[type=range]::-webkit-slider-runnable-track{background:transparent;height:8px}
+.root-slider-row input[type=range]::-moz-range-track{background:transparent;height:8px}
+
+/* fraction sliders inside foreignObject */
+.fo-frac{font-family:system-ui,sans-serif;user-select:none}
+.fo-row{display:flex;align-items:center;gap:6px;margin:3px 0}
+.fo-row-ends{display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px}
+.fo-row-end{font-family:monospace;font-weight:500}
+.fo-row input[type=range]{
+  flex:1;appearance:none;-webkit-appearance:none;
+  height:7px;border-radius:4px;cursor:pointer;outline:none;margin:0;
+}
+.fo-row input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:17px;height:17px;border-radius:50%;
+  background:#fff;border:2.5px solid #555;cursor:pointer;
+  margin-top:-5px;
+}
+.fo-row input[type=range]::-moz-range-thumb{
+  width:17px;height:17px;border-radius:50%;
+  background:#fff;border:2.5px solid #555;cursor:pointer;
+}
+.fo-row input[type=range]::-webkit-slider-runnable-track{background:transparent;height:7px}
+.fo-row input[type=range]::-moz-range-track{background:transparent;height:7px}
+
+/* dist bar */
+.dist-bar{height:8px;border-radius:4px;overflow:hidden;display:flex;margin:3px 0}
+.dist-bar-a{background:#378ADD;transition:width 0.3s;flex-shrink:0}
+.dist-bar-b{background:#D85A30;transition:width 0.3s;flex-shrink:0}
+
+/* N slider */
+.n-row{display:flex;align-items:center;gap:10px;margin-bottom:0.75rem}
+.n-row input[type=range]{flex:1;accent-color:var(--t1);cursor:pointer}
+.n-label{font-size:13px;color:var(--t2);flex-shrink:0}
+.n-val{font-size:13px;font-weight:500;color:var(--t1);min-width:32px;text-align:right}
+
+@media(max-width:540px){.grid2,.grid4{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Decision trees — interactive explainer</h1>
+<p class="sub">COMP30027 Machine Learning · University of Melbourne</p>
+
+<!-- ══ MAIN CARD ══ -->
+<div class="card">
+  <div class="card-title">Decision tree — interactive split explorer</div>
+
+  <!-- N -->
+  <div class="n-row">
+    <span class="n-label">Total samples (N)</span>
+    <input type="range" id="root-n" min="10" max="200" value="100" step="10" oninput="update()">
+    <span class="n-val" id="root-n-out">100</span>
+  </div>
+
+  <!-- Root class-balance slider -->
+  <div style="margin-bottom:0.25rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:6px">
+      <span style="color:#0C447C;font-weight:500">Class A</span>
+      <span style="color:var(--t3);font-size:11px" id="root-counts">50 · 50</span>
+      <span style="color:#712B13;font-weight:500">Class B</span>
+    </div>
+    <div class="root-slider-row">
+      <input type="range" id="root-split" min="1" max="99" value="50" step="1" oninput="update()">
+    </div>
+  </div>
+
+  <!-- SVG tree -->
+  <svg id="tree-svg" width="100%" viewBox="0 0 740 780"
+       style="display:block;overflow:visible;margin:0.75rem 0"
+       role="img" aria-label="Decision tree diagram showing root node, split sliders, child nodes, weighted entropy and information gain">
+    <defs>
+      <marker id="tarr" viewBox="0 0 10 10" refX="8" refY="5"
+              markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="#888780"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+      <marker id="tarr-purple" viewBox="0 0 10 10" refX="8" refY="5"
+              markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="#534AB7"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+      <marker id="tarr-green" viewBox="0 0 10 10" refX="8" refY="5"
+              markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="#3B6D11"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+      <marker id="tarr-amber" viewBox="0 0 10 10" refX="8" refY="5"
+              markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="#BA7517"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+
+    <!-- ── ROOT BOX (y=10, h=88) ── -->
+    <rect x="240" y="10" width="240" height="88" rx="10"
+          fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
+    <text x="360" y="30" text-anchor="middle" font-size="12" font-weight="500"
+          fill="#5F5E5A" font-family="system-ui,sans-serif">Root node</text>
+    <text id="sv-root-dist" x="360" y="48" text-anchor="middle" font-size="12"
+          fill="#5F5E5A" font-family="system-ui,sans-serif">A: 50  ·  B: 50</text>
+    <text x="342" y="66" text-anchor="middle" font-size="12"
+          font-style="italic" fill="#2C2C2A" font-family="system-ui,sans-serif">H</text>
+    <text x="349" y="66" text-anchor="start" font-size="9"
+          fill="#2C2C2A" font-family="system-ui,sans-serif">root</text>
+    <text id="sv-root-ent" x="360" y="82" text-anchor="middle" font-size="12"
+          fill="#5F5E5A" font-family="system-ui,sans-serif">= 1.000 bits</text>
+
+    <!-- Root dist bar -->
+    <foreignObject x="252" y="89" width="216" height="10">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="dist-bar" style="margin:0">
+        <div class="dist-bar-a" id="root-bar-a" style="width:50%"></div>
+        <div class="dist-bar-b" id="root-bar-b" style="width:50%"></div>
+      </div>
+    </foreignObject>
+
+    <!-- Trunk down from root bottom-centre to T-junction at y=120 -->
+    <line x1="360" y1="100" x2="360" y2="120" stroke="#888780" stroke-width="1.5"/>
+    <!-- Horizontal branches at y=120 -->
+    <line x1="162" y1="120" x2="558" y2="120" stroke="#888780" stroke-width="1.5"/>
+    <!-- Left descent y=120 → y=308 -->
+    <line x1="162" y1="120" x2="162" y2="308" stroke="#888780" stroke-width="1.5" marker-end="url(#tarr)"/>
+    <!-- Right descent y=120 → y=308 -->
+    <line x1="558" y1="120" x2="558" y2="308" stroke="#888780" stroke-width="1.5" marker-end="url(#tarr)"/>
+
+    <!-- CLASS A SPLIT SLIDER — centred, y=128 -->
+    <foreignObject x="200" y="126" width="320" height="50">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="fo-frac">
+        <div class="fo-row-ends">
+          <span class="fo-row-end" style="color:#0C447C">A → left: <span id="lbl-al">80%</span></span>
+          <span style="font-size:10px;color:#888780;font-weight:500">Class A split</span>
+          <span class="fo-row-end" style="color:#712B13">right: <span id="lbl-ar">20%</span></span>
+        </div>
+        <div class="fo-row">
+          <input type="range" id="frac-a-left" min="0" max="100" value="80" step="1" oninput="update()">
+        </div>
+      </div>
+    </foreignObject>
+
+    <!-- CLASS B SPLIT SLIDER — centred, y=192 -->
+    <foreignObject x="200" y="190" width="320" height="50">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="fo-frac">
+        <div class="fo-row-ends">
+          <span class="fo-row-end" style="color:#0C447C">B → left: <span id="lbl-bl-left">20%</span></span>
+          <span style="font-size:10px;color:#888780;font-weight:500">Class B split</span>
+          <span class="fo-row-end" style="color:#712B13">right: <span id="lbl-br">80%</span></span>
+        </div>
+        <div class="fo-row">
+          <input type="range" id="frac-b-left" min="0" max="100" value="20" step="1" oninput="update()">
+        </div>
+      </div>
+    </foreignObject>
+
+    <!-- LEFT CHILD BOX (y=310, h=90) -->
+    <rect id="sv-left-bg" x="42" y="310" width="240" height="90" rx="10"
+          fill="#E6F1FB" stroke="#378ADD" stroke-width="1"/>
+    <text x="162" y="328" text-anchor="middle" font-size="12" font-weight="500"
+          fill="#0C447C" font-family="system-ui,sans-serif">Left child</text>
+    <text id="sv-left-dist" x="162" y="345" text-anchor="middle" font-size="12"
+          fill="#185FA5" font-family="system-ui,sans-serif">A: 40  ·  B: 10</text>
+    <text x="144" y="362" text-anchor="middle" font-size="12"
+          font-style="italic" fill="#0C447C" font-family="system-ui,sans-serif">H</text>
+    <text x="151" y="362" text-anchor="start" font-size="9"
+          fill="#0C447C" font-family="system-ui,sans-serif">left</text>
+    <text id="sv-left-ent" x="162" y="378" text-anchor="middle" font-size="12"
+          fill="#185FA5" font-family="system-ui,sans-serif">= 0.722 bits</text>
+    <text id="sv-left-pred" x="162" y="392" text-anchor="middle" font-size="11"
+          font-weight="500" fill="#0C447C" font-family="system-ui,sans-serif">predict: A</text>
+    <!-- Left dist bar -->
+    <foreignObject x="54" y="399" width="216" height="10">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="dist-bar" style="margin:0">
+        <div class="dist-bar-a" id="left-bar-a" style="width:80%"></div>
+        <div class="dist-bar-b" id="left-bar-b" style="width:20%"></div>
+      </div>
+    </foreignObject>
+    <!-- n_left under left child -->
+    <text x="144" y="421" text-anchor="middle" font-size="11"
+          font-style="italic" fill="#0C447C" font-family="system-ui,sans-serif">n</text>
+    <text x="151" y="421" text-anchor="start" font-size="9"
+          fill="#0C447C" font-family="system-ui,sans-serif">left</text>
+    <text id="sv-left-nval" x="162" y="434" text-anchor="middle" font-size="11"
+          fill="#5F5E5A" font-family="system-ui,sans-serif">= 50</text>
+
+    <!-- RIGHT CHILD BOX (y=310, h=90) -->
+    <rect id="sv-right-bg" x="438" y="310" width="240" height="90" rx="10"
+          fill="#FAECE7" stroke="#D85A30" stroke-width="1"/>
+    <text x="558" y="328" text-anchor="middle" font-size="12" font-weight="500"
+          fill="#712B13" font-family="system-ui,sans-serif">Right child</text>
+    <text id="sv-right-dist" x="558" y="345" text-anchor="middle" font-size="12"
+          fill="#993C1D" font-family="system-ui,sans-serif">A: 10  ·  B: 40</text>
+    <text x="540" y="362" text-anchor="middle" font-size="12"
+          font-style="italic" fill="#712B13" font-family="system-ui,sans-serif">H</text>
+    <text x="547" y="362" text-anchor="start" font-size="9"
+          fill="#712B13" font-family="system-ui,sans-serif">right</text>
+    <text id="sv-right-ent" x="558" y="378" text-anchor="middle" font-size="12"
+          fill="#993C1D" font-family="system-ui,sans-serif">= 0.722 bits</text>
+    <text id="sv-right-pred" x="558" y="392" text-anchor="middle" font-size="11"
+          font-weight="500" fill="#712B13" font-family="system-ui,sans-serif">predict: B</text>
+    <!-- Right dist bar -->
+    <foreignObject x="450" y="399" width="216" height="10">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="dist-bar" style="margin:0">
+        <div class="dist-bar-a" id="right-bar-a" style="width:20%"></div>
+        <div class="dist-bar-b" id="right-bar-b" style="width:80%"></div>
+      </div>
+    </foreignObject>
+    <!-- n_right under right child -->
+    <text x="540" y="421" text-anchor="middle" font-size="11"
+          font-style="italic" fill="#712B13" font-family="system-ui,sans-serif">n</text>
+    <text x="547" y="421" text-anchor="start" font-size="9"
+          fill="#712B13" font-family="system-ui,sans-serif">right</text>
+    <text id="sv-right-nval" x="558" y="434" text-anchor="middle" font-size="11"
+          fill="#5F5E5A" font-family="system-ui,sans-serif">= 50</text>
+
+    <!-- WEIGHTED ENTROPY BOX (centre, y=460) -->
+    <line x1="162" y1="437" x2="290" y2="458"
+          stroke="#534AB7" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#tarr-purple)"/>
+    <line x1="558" y1="437" x2="430" y2="458"
+          stroke="#534AB7" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#tarr-purple)"/>
+    <rect x="210" y="460" width="300" height="84" rx="10"
+          fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+    <text x="360" y="478" text-anchor="middle" font-size="12" font-weight="500"
+          fill="#26215C" font-family="system-ui,sans-serif">Weighted avg entropy</text>
+    <text id="sv-wavg-formula" x="360" y="495" text-anchor="middle" font-size="11"
+          fill="#3C3489" font-family="system-ui,sans-serif">(50/100)·0.722 + (50/100)·0.722</text>
+    <text x="342" y="512" text-anchor="middle" font-size="12"
+          font-style="italic" fill="#3C3489" font-family="system-ui,sans-serif">H</text>
+    <text x="349" y="512" text-anchor="start" font-size="9"
+          fill="#3C3489" font-family="system-ui,sans-serif">after</text>
+    <text id="sv-wavg-val" x="360" y="529" text-anchor="middle" font-size="13"
+          font-weight="500" fill="#26215C" font-family="system-ui,sans-serif">= 0.722 bits</text>
+
+    <!-- Green arrow: right edge of root → x=710 → down to y=614 → left to IG right edge -->
+    <path d="M480 54 L710 54 L710 614 L510 614"
+          fill="none" stroke="#3B6D11" stroke-width="1.3" stroke-dasharray="6 3"
+          marker-end="url(#tarr-green)"/>
+
+    <!-- Arrow from weighted entropy down to IG -->
+    <line x1="360" y1="544" x2="360" y2="576"
+          stroke="#3B6D11" stroke-width="1.5" marker-end="url(#tarr-green)"/>
+
+    <!-- H_SPLIT BOX: tall, beside weighted entropy + IG: x=20 y=460 w=182 h=190 -->
+    <rect x="20" y="460" width="182" height="190" rx="10"
+          fill="#FAEEDA" stroke="#BA7517" stroke-width="1"/>
+    <text x="111" y="480" text-anchor="middle" font-size="12" font-weight="500"
+          fill="#412402" font-family="system-ui,sans-serif">Split entropy</text>
+    <text id="sv-si-pleft" x="111" y="502" text-anchor="middle" font-size="11"
+          fill="#633806" font-family="system-ui,sans-serif">PL = 50/100 = 0.500</text>
+    <text id="sv-si-pright" x="111" y="520" text-anchor="middle" font-size="11"
+          fill="#633806" font-family="system-ui,sans-serif">PR = 50/100 = 0.500</text>
+    <text x="105" y="548" text-anchor="middle" font-size="11"
+          fill="#633806" font-family="system-ui,sans-serif">H</text>
+    <text x="112" y="548" text-anchor="start" font-size="9"
+          fill="#633806" font-family="system-ui,sans-serif">split</text>
+    <text x="111" y="566" text-anchor="middle" font-size="11"
+          fill="#633806" font-family="system-ui,sans-serif">= − PL log₂(PL)</text>
+    <text x="117" y="582" text-anchor="middle" font-size="11"
+          fill="#633806" font-family="system-ui,sans-serif">− PR log₂(PR)</text>
+    <text id="sv-si-val" x="111" y="618" text-anchor="middle" font-size="13"
+          font-weight="500" fill="#412402" font-family="system-ui,sans-serif">= 1.000 bits</text>
+
+    <!-- INFORMATION GAIN BOX (centre, y=578, w=300, h=72) -->
+    <rect x="210" y="578" width="300" height="72" rx="10"
+          fill="#EAF3DE" stroke="#3B6D11" stroke-width="1"/>
+    <text x="360" y="596" text-anchor="middle" font-size="12" font-weight="500"
+          fill="#173404" font-family="system-ui,sans-serif">Information gain</text>
+    <text id="sv-ig-formula" x="360" y="614" text-anchor="middle" font-size="11"
+          fill="#27500A" font-family="system-ui,sans-serif">IG = H_root − H_after</text>
+    <text id="sv-ig-val" x="360" y="636" text-anchor="middle" font-size="13"
+          font-weight="500" fill="#173404" font-family="system-ui,sans-serif">= 0.278 bits</text>
+
+    <!-- Arrow from IG bottom down to GR top -->
+    <line x1="360" y1="650" x2="360" y2="678"
+          stroke="#534AB7" stroke-width="1.3" stroke-dasharray="5 3" marker-end="url(#tarr-purple)"/>
+
+    <!-- Arrow from H_split bottom → down to GR mid-y=720 → right to GR left edge x=210 -->
+    <path d="M111 650 L111 720 L208 720"
+          fill="none" stroke="#BA7517" stroke-width="1.3" stroke-dasharray="5 3"
+          marker-end="url(#tarr-amber)"/>
+
+    <!-- GAIN RATIO BOX (centre, y=680, w=300, h=80) -->
+    <rect x="210" y="680" width="300" height="80" rx="10"
+          fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+    <text x="360" y="698" text-anchor="middle" font-size="12" font-weight="500"
+          fill="#26215C" font-family="system-ui,sans-serif">Gain ratio</text>
+    <text id="sv-gr-formula" x="360" y="716" text-anchor="middle" font-size="11"
+          fill="#3C3489" font-family="system-ui,sans-serif">GR = IG / H_split = 0.278 / 1.000</text>
+    <text id="sv-gr-val" x="360" y="750" text-anchor="middle" font-size="13"
+          font-weight="500" fill="#26215C" font-family="system-ui,sans-serif">= 0.278</text>
+
+  </svg>
+
+</div>
+
+</div>
+
+<script>
+function entMulti(pa,pb){
+  var tot=pa+pb; if(tot===0)return 0;
+  var a=pa/tot, b=pb/tot;
+  return(a>0?-a*Math.log2(a):0)+(b>0?-b*Math.log2(b):0);
+}
+function fmt(v,dp){return isNaN(v)?'—':v.toFixed(dp!==undefined?dp:3)}
+function barW(val,max){
+  if(isNaN(val)||max===0)return'0%';
+  return Math.min(100,Math.max(0,val/max*100)).toFixed(1)+'%';
+}
+function classify(nA,nB){
+  if(nA===0&&nB===0)return'(empty)';
+  return nA>=nB?'predict: A':'predict: B';
+}
+function updateFracSliderBg(id,pct,colorLeft,colorRight){
+  var p=pct.toFixed(1);
+  var cL=colorLeft||'#378ADD', cR=colorRight||'#d0cfc8';
+  document.getElementById(id).style.background=
+    'linear-gradient(to right,'+cL+' 0%,'+cL+' '+p+'%,'+cR+' '+p+'%,'+cR+' 100%)';
+}
+
+function update(){
+  var rootSplit=parseInt(document.getElementById('root-split').value);
+  var N=parseInt(document.getElementById('root-n').value);
+  var fracAL=parseInt(document.getElementById('frac-a-left').value)/100;
+  var fracBL=parseInt(document.getElementById('frac-b-left').value)/100;
+
+  /* root slider two-tone */
+  var rp=((rootSplit-1)/(99-1)*100).toFixed(1);
+  document.getElementById('root-split').style.background=
+    'linear-gradient(to right,#378ADD 0%,#378ADD '+rp+'%,#D85A30 '+rp+'%,#D85A30 100%)';
+
+  /* frac slider: both sliders show blue on left (→left) and red on right (→right) */
+  updateFracSliderBg('frac-a-left', fracAL*100, '#378ADD', '#85B7EB');
+  updateFracSliderBg('frac-b-left', fracBL*100, '#D85A30', '#F0997B');
+
+  var nA=Math.round(N*rootSplit/100), nB=N-nA;
+  var pA=N>0?nA/N:0, pB=N>0?nB/N:0;
+
+  document.getElementById('root-n-out').textContent=N;
+  document.getElementById('root-counts').textContent=nA+' · '+nB;
+
+  /* fraction labels */
+  var pctAL=Math.round(fracAL*100), pctBL=Math.round(fracBL*100);
+  document.getElementById('lbl-al').textContent=pctAL+'%';
+  document.getElementById('lbl-ar').textContent=(100-pctAL)+'%';
+  document.getElementById('lbl-bl-left').textContent=pctBL+'%';
+  document.getElementById('lbl-br').textContent=(100-pctBL)+'%';
+
+  var hRoot=entMulti(nA,nB);
+  document.getElementById('sv-root-dist').textContent='A: '+nA+'  ·  B: '+nB;
+  document.getElementById('sv-root-ent').textContent='= '+fmt(hRoot)+' bits';
+  document.getElementById('root-bar-a').style.width=(pA*100).toFixed(1)+'%';
+  document.getElementById('root-bar-b').style.width=(pB*100).toFixed(1)+'%';
+
+
+  var nAL=Math.round(nA*fracAL), nBL=Math.round(nB*fracBL);
+  var nAR=nA-nAL, nBR=nB-nBL;
+  var nL=nAL+nBL, nR=nAR+nBR;
+  var pAL2=nL>0?nAL/nL:0, pBL2=nL>0?nBL/nL:0;
+  var pAR=nR>0?nAR/nR:0,   pBR=nR>0?nBR/nR:0;
+
+  var hL=entMulti(nAL,nBL), hR=entMulti(nAR,nBR);
+  var wL=N>0?nL/N:0, wR=N>0?nR/N:0;
+  var hAfter=wL*hL+wR*hR;
+  var ig=hRoot-hAfter;
+  var siL=wL>0?-wL*Math.log2(wL):0, siR=wR>0?-wR*Math.log2(wR):0;
+  var si=siL+siR;
+  var gr=si>0.0001?ig/si:NaN;
+
+  /* left child */
+  document.getElementById('sv-left-dist').textContent='A: '+nAL+'  ·  B: '+nBL;
+  document.getElementById('sv-left-ent').textContent='= '+fmt(hL)+' bits';
+  document.getElementById('sv-left-pred').textContent=classify(nAL,nBL);
+  document.getElementById('sv-left-nval').textContent='= '+nL;
+  document.getElementById('left-bar-a').style.width=(pAL2*100).toFixed(1)+'%';
+  document.getElementById('left-bar-b').style.width=(pBL2*100).toFixed(1)+'%';
+
+  /* right child */
+  document.getElementById('sv-right-dist').textContent='A: '+nAR+'  ·  B: '+nBR;
+  document.getElementById('sv-right-ent').textContent='= '+fmt(hR)+' bits';
+  document.getElementById('sv-right-pred').textContent=classify(nAR,nBR);
+  document.getElementById('sv-right-nval').textContent='= '+nR;
+  document.getElementById('right-bar-a').style.width=(pAR*100).toFixed(1)+'%';
+  document.getElementById('right-bar-b').style.width=(pBR*100).toFixed(1)+'%';
+
+  /* weighted entropy node */
+  var wLpct=(wL*100).toFixed(0), wRpct=(wR*100).toFixed(0);
+  document.getElementById('sv-wavg-formula').textContent=
+    '('+nL+'/'+N+')·'+fmt(hL,3)+' + ('+nR+'/'+N+')·'+fmt(hR,3);
+  document.getElementById('sv-wavg-val').textContent='= '+fmt(hAfter)+' bits';
+
+  /* IG node */
+  document.getElementById('sv-ig-formula').textContent=
+    'IG = '+fmt(hRoot,3)+' \u2212 '+fmt(hAfter,3);
+  document.getElementById('sv-ig-val').textContent='= '+fmt(ig)+' bits';
+
+  /* H_split (split entropy) node */
+  document.getElementById('sv-si-pleft').textContent =
+    'PL = '+nL+'/'+N+' = '+fmt(wL,3);
+  document.getElementById('sv-si-pright').textContent =
+    'PR = '+nR+'/'+N+' = '+fmt(wR,3);
+  document.getElementById('sv-si-val').textContent = '= '+fmt(si)+' bits';
+
+  /* Gain ratio node */
+  var grDisplay = isNaN(gr) ? 'undefined' : fmt(gr,3);
+  document.getElementById('sv-gr-formula').textContent =
+    'GR = IG / H split = '+fmt(ig,3)+' / '+fmt(si,3);
+  document.getElementById('sv-gr-val').textContent = '= '+grDisplay;
+
+  var highIG=ig>hRoot*0.6&&hRoot>0.05;
+  document.getElementById('sv-left-bg').setAttribute('stroke-width',highIG?'2':'1');
+  document.getElementById('sv-right-bg').setAttribute('stroke-width',highIG?'2':'1');
+
+  /* entropy section */
+
+
+  /* IG */
+
+  /* gain ratio */
+}
+
+update();
+</script>
+</body>
+</html>
