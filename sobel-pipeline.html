@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sobel Edge Detection — live pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#10141a; --panel:#171c24; --panel-2:#1e242e;
+    --line:#2a3340; --line-soft:#222933;
+    --ink:#edebe4; --muted:#7e8996; --muted-2:#59626e;
+    --signal:#46d6c0; --signal-dim:rgba(70,214,192,.14);
+    --amber:#e7a44c; --amber-dim:rgba(231,164,76,.14);
+    --coral:#e56a5a;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 12px 34px rgba(0,0,0,.45);
+    --disp:"Space Grotesk",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+    --body:"Inter",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      linear-gradient(0deg,rgba(255,255,255,.015) 1px,transparent 1px) 0 0/100% 26px,
+      linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px) 0 0/26px 100%,
+      radial-gradient(1200px 700px at 78% -10%, #182029 0%, var(--bg) 60%);
+    color:var(--ink); font-family:var(--body); line-height:1.5; min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  code{font-family:var(--mono)}
+
+  header.bench{
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:16px 22px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(23,28,36,.9),rgba(16,20,26,.6));
+    backdrop-filter:blur(6px);position:sticky;top:0;z-index:30;
+  }
+  .brand{display:flex;align-items:baseline;gap:12px;margin-right:auto}
+  .brand h1{font-family:var(--disp);font-weight:700;font-size:19px;letter-spacing:-.01em;margin:0}
+  .brand .tag{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase}
+  .status{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11.5px;color:var(--muted);letter-spacing:.05em}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted-2)}
+  .dot.live{background:var(--signal);box-shadow:0 0 12px 1px var(--signal)}
+  .dot.frozen{background:var(--amber);box-shadow:0 0 12px 1px var(--amber)}
+  .dot.err{background:var(--coral)}
+
+  .controls{
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center;
+    padding:12px 22px;border-bottom:1px solid var(--line);max-width:1560px;margin:0 auto;
+  }
+  button{font-family:var(--body);cursor:pointer;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel-2);color:var(--ink);font-size:13px;padding:8px 13px;
+    transition:border-color .15s,background .15s,color .15s}
+  button:hover{border-color:var(--muted)}
+  button:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  button.primary{background:var(--signal-dim);border-color:var(--signal);color:var(--signal);font-weight:600}
+  button.primary:hover{background:rgba(70,214,192,.22)}
+  button.danger{color:var(--coral);border-color:transparent;background:transparent}
+  button.danger:hover{border-color:var(--coral)}
+  button[aria-pressed="true"]{background:var(--amber-dim);border-color:var(--amber);color:var(--amber);font-weight:600}
+  .sep{width:1px;align-self:stretch;background:var(--line);margin:0 2px}
+  .ctl{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.03em}
+  .ctl b{color:var(--ink)}
+  input[type=range]{width:110px;-webkit-appearance:none;height:4px;border-radius:3px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--signal);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border:none;border-radius:50%;background:var(--signal);cursor:pointer}
+  select{font-family:var(--mono);font-size:11.5px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:6px 8px}
+
+  /* diagram: 4 columns keeps it wide + short */
+  .diagram{
+    position:relative;max-width:1560px;margin:24px auto 8px;padding:8px 24px 12px;
+    display:grid;
+    grid-template-columns:minmax(0,1.05fr) 132px minmax(0,1fr) minmax(0,1.05fr);
+    grid-template-rows:auto auto;gap:18px 30px;align-items:center;
+  }
+  #wires{position:absolute;inset:0;pointer-events:none;z-index:1;overflow:visible}
+
+  .node{
+    position:relative;z-index:2;background:var(--panel);border:1px solid var(--line);
+    border-radius:13px;box-shadow:var(--shadow);overflow:hidden;
+    transition:opacity .3s, border-color .3s, box-shadow .3s;
+  }
+  .node.dim,.opcluster.dim{opacity:.22}
+  .node.hot{border-color:var(--signal);box-shadow:0 0 0 1px var(--signal-dim),0 12px 34px rgba(0,0,0,.5)}
+  .node-hd{
+    display:flex;align-items:center;gap:9px;padding:10px 13px;border-bottom:1px solid var(--line-soft);
+    font-family:var(--mono);font-size:12px;color:var(--ink);font-weight:600;letter-spacing:.02em;
+  }
+  .node-ix{font-size:10px;color:var(--signal);background:var(--signal-dim);border-radius:5px;padding:2px 6px;letter-spacing:.06em;white-space:nowrap}
+  .node-body{padding:12px}
+  .node canvas{display:block;width:100%;height:auto;border-radius:7px;background:#0b0e12}
+
+  .nodeInput{grid-column:1;grid-row:1 / span 2;justify-self:stretch}
+  .clX{grid-column:2;grid-row:1}
+  .clY{grid-column:2;grid-row:2}
+  .resGx{grid-column:3;grid-row:1}
+  .resGy{grid-column:3;grid-row:2}
+  .nodeEdge{grid-column:4;grid-row:1 / span 2;justify-self:stretch}
+
+  /* operator cluster: convolution symbol + its kernel, left of the result */
+  .opcluster{
+    position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:16px;
+    transition:opacity .3s;
+  }
+  .opwrap{display:flex;flex-direction:column;align-items:center;gap:4px}
+  .conv{
+    width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    background:var(--panel);border:1px solid var(--signal);color:var(--signal);
+    font-family:var(--mono);font-size:22px;line-height:1;box-shadow:0 0 0 5px var(--signal-dim);
+  }
+  .clabel{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+  .kernel-node{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 8px 9px;box-shadow:var(--shadow)}
+  .kernel-node .kh{font-family:var(--mono);font-size:9px;color:var(--amber);text-align:center;margin-bottom:6px;letter-spacing:.1em;text-transform:uppercase}
+  .kmini{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+  .kmini span{font-family:var(--mono);font-size:12px;text-align:center;color:var(--amber);background:#141821;border:1px solid var(--line);border-radius:5px;padding:5px 7px}
+  .kmini span.z{color:var(--muted-2)}
+
+  .badge{
+    display:inline-block;margin-bottom:10px;font-family:var(--mono);font-size:12.5px;color:var(--ink);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:7px 11px;
+  }
+  .badge sup{font-size:9px}
+  .badge .op{color:var(--signal)}
+
+  .caption{max-width:1560px;margin:0 auto;padding:8px 24px 4px;min-height:44px;display:flex;align-items:center;gap:14px}
+  .caption .step-ix{font-family:var(--mono);font-size:11px;color:var(--signal);border:1px solid var(--signal);border-radius:20px;padding:3px 10px;white-space:nowrap;letter-spacing:.06em}
+  .caption p{margin:0;font-size:14px;color:var(--ink);max-width:96ch}
+  .caption code{color:var(--amber);font-size:12.5px}
+
+  .walkbar{display:flex;gap:8px;align-items:center;max-width:1560px;margin:0 auto;padding:2px 24px 26px}
+  .walkbar .grow{flex:1}
+
+  .stage-overlay{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;padding:30px;background:rgba(11,14,18,.92)}
+  .stage-overlay p{max-width:44ch;color:var(--muted);font-size:14px;margin:0}
+  .stage-overlay .err-title{color:var(--coral);font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+
+  .foot{max-width:1560px;margin:0 auto;padding:0 24px 40px;color:var(--muted-2);font-size:12px;font-family:var(--mono)}
+  .foot kbd{background:var(--panel-2);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:11px;color:var(--ink)}
+
+  @media (max-width:900px){
+    .diagram{grid-template-columns:1fr;grid-template-rows:auto;gap:30px}
+    .nodeInput,.clX,.clY,.resGx,.resGy,.nodeEdge{grid-column:1;grid-row:auto;justify-self:stretch}
+    .nodeInput{order:1}.clX{order:2}.resGx{order:3}.clY{order:4}.resGy{order:5}.nodeEdge{order:6}
+    .opcluster{flex-direction:row;justify-content:center;gap:22px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none!important}
+    #wires .flow{stroke-dasharray:none!important;animation:none!important}
+  }
+</style>
+</head>
+<body>
+
+<header class="bench">
+  <div class="brand">
+    <h1>Sobel Edge Detection</h1>
+    <span class="tag">live pipeline</span>
+  </div>
+  <div class="status" role="status" aria-live="polite">
+    <span class="dot" id="statusDot"></span><span id="statusText">camera idle</span>
+  </div>
+</header>
+
+<div class="controls">
+  <button class="primary" id="startBtn">Start camera</button>
+  <button id="patternBtn">Test pattern</button>
+  <button id="freezeBtn" aria-pressed="false">Freeze</button>
+  <button id="stopBtn" class="danger">Stop</button>
+  <span class="sep"></span>
+  <div class="ctl"><label for="gain">gradient gain</label><input type="range" id="gain" min="0.3" max="4" step="0.1" value="1.4"><b id="gainV">1.4</b></div>
+  <div class="ctl"><label for="thr">edge threshold</label><input type="range" id="thr" min="0" max="255" value="0"><b id="thrV">off</b></div>
+  <label class="ctl" style="cursor:pointer"><input type="checkbox" id="colorGrad"> colour the ∂x/∂y sign</label>
+  <span class="sep"></span>
+  <div class="ctl"><label for="res">res</label>
+    <select id="res"><option value="300">300</option><option value="400" selected>400</option><option value="512">512</option></select>
+  </div>
+</div>
+
+<main class="diagram" id="diagram">
+  <svg id="wires" aria-hidden="true">
+    <defs>
+      <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+        <path d="M0,0 L7,3 L0,6 Z" fill="var(--muted)"></path>
+      </marker>
+      <marker id="ah-hot" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+        <path d="M0,0 L7,3 L0,6 Z" fill="var(--signal)"></path>
+      </marker>
+    </defs>
+  </svg>
+
+  <!-- INPUT -->
+  <section class="node nodeInput" id="nodeInput">
+    <div class="node-hd"><span class="node-ix">input</span> Intensity image</div>
+    <div class="node-body"><canvas id="cInput"></canvas></div>
+  </section>
+
+  <!-- X operator: kernel ABOVE the convolution symbol (mirror of the Y branch) -->
+  <div class="opcluster clX" id="clX">
+    <div class="kernel-node" id="wrapKx">
+      <div class="kh">G\u2093 kernel</div>
+      <div class="kmini" id="kx"></div>
+    </div>
+    <div class="opwrap">
+      <div class="conv" id="opX" title="convolution">⊛</div>
+      <span class="clabel">convolve</span>
+    </div>
+  </div>
+
+  <!-- X result -->
+  <section class="node resGx" id="resGx">
+    <div class="node-hd"><span class="node-ix">∂/∂x</span> Horizontal gradient</div>
+    <div class="node-body"><canvas id="cGx"></canvas></div>
+  </section>
+
+  <!-- Y operator -->
+  <div class="opcluster clY" id="clY">
+    <div class="opwrap">
+      <div class="conv" id="opY" title="convolution">⊛</div>
+      <span class="clabel">convolve</span>
+    </div>
+    <div class="kernel-node" id="wrapKy">
+      <div class="kh">G\u1d67 kernel</div>
+      <div class="kmini" id="ky"></div>
+    </div>
+  </div>
+
+  <!-- Y result -->
+  <section class="node resGy" id="resGy">
+    <div class="node-hd"><span class="node-ix">∂/∂y</span> Vertical gradient</div>
+    <div class="node-body"><canvas id="cGy"></canvas></div>
+  </section>
+
+  <!-- EDGE -->
+  <section class="node nodeEdge" id="nodeEdge">
+    <div class="node-hd"><span class="node-ix">output</span> Edge strength</div>
+    <div class="node-body">
+      <div class="badge">|∇I| = <span class="op">√</span>( G<sub>x</sub><sup>2</sup> + G<sub>y</sub><sup>2</sup> )</div>
+      <canvas id="cEdge"></canvas>
+    </div>
+  </section>
+</main>
+
+<div class="caption">
+  <span class="step-ix" id="capIx" hidden>step</span>
+  <p id="capText">Live pipeline running. Use <b>Walk through</b> to reveal it one stage at a time.</p>
+</div>
+
+<div class="walkbar">
+  <button id="walkStart" class="primary">Walk through</button>
+  <button id="walkPrev" hidden>◀ Back</button>
+  <button id="walkNext" hidden>Next ▶</button>
+  <span class="grow"></span>
+  <button id="walkExit" hidden class="danger">Show whole pipeline</button>
+</div>
+
+<p class="foot">
+  <kbd>Space</kbd> freeze · <kbd>→</kbd>/<kbd>←</kbd> walk · <kbd>Esc</kbd> show all.
+  Each convolution operator (⊛) takes the intensity image and one kernel and returns a gradient. Grey is zero, lighter positive, darker negative. All processing is local to your browser.
+</p>
+
+<div class="stage-overlay" id="overlay">
+  <p id="overlayMsg">Grant camera access to run the pipeline live, or use a synthetic test pattern to explore it without a webcam.</p>
+  <div style="display:flex;gap:10px">
+    <button class="primary" id="startBtn2">Start camera</button>
+    <button id="patternBtn2">Use test pattern</button>
+  </div>
+</div>
+
+<video id="video" autoplay playsinline muted style="display:none"></video>
+<canvas id="work" style="display:none"></canvas>
+
+<script>
+(function(){
+  "use strict";
+  const $ = s => document.querySelector(s);
+
+  const video=$("#video"), work=$("#work");
+  const wctx=work.getContext("2d",{willReadFrequently:true});
+  const cInput=$("#cInput"), cGx=$("#cGx"), cGy=$("#cGy"), cEdge=$("#cEdge");
+  const xIn=cInput.getContext("2d"), xGx=cGx.getContext("2d"), xGy=cGy.getContext("2d"), xEd=cEdge.getContext("2d");
+  const statusDot=$("#statusDot"), statusText=$("#statusText");
+  const overlay=$("#overlay"), overlayMsg=$("#overlayMsg");
+  const diagram=$("#diagram"), svg=$("#wires");
+
+  const state={ stream:null, running:false, frozen:false, frozenData:null,
+    W:400, gain:1.4, thr:0, color:false, walk:null };
+
+  const KX=[-1,0,1,-2,0,2,-1,0,1];
+  const KY=[-1,-2,-1,0,0,0,1,2,1];
+  (function(){
+    const build=(el,k)=>{ el.innerHTML=""; k.forEach(v=>{ const s=document.createElement("span"); s.textContent=v; if(v===0) s.classList.add("z"); el.appendChild(s); }); };
+    build($("#kx"),KX); build($("#ky"),KY);
+  })();
+
+  // ---------- capture ----------
+  async function startCamera(){
+    try{
+      setStatus("requesting…","");
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:false});
+      state.stream=stream; video.srcObject=stream; await video.play();
+      overlay.style.display="none";
+      state.running=true; state.frozen=false; state.frozenData=null;
+      setStatus("live","live"); syncFreeze(); loop();
+    }catch(err){ showError(err); }
+  }
+  function stopCamera(){
+    if(state.stream){ state.stream.getTracks().forEach(t=>t.stop()); state.stream=null; }
+    state.running=false; setStatus("camera idle","");
+    overlay.querySelector(".err-title")?.remove();
+    overlayMsg.innerHTML="Camera stopped. Start it again or use a test pattern.";
+    overlay.style.display="flex";
+  }
+  function showError(err){
+    setStatus("no camera","err"); state.running=false; overlay.style.display="flex";
+    if(!overlay.querySelector(".err-title")){ const t=document.createElement("div"); t.className="err-title"; t.textContent="camera unavailable"; overlay.insertBefore(t,overlayMsg); }
+    let msg="Couldn't open the camera.";
+    if(err&&err.name==="NotAllowedError") msg="Permission was blocked. In Safari, serve over http://localhost (file:// can't use the camera) — or use the test pattern.";
+    else if(err&&err.name==="NotFoundError") msg="No camera found. Every stage still works with the test pattern.";
+    else if(location.protocol!=="https:"&&location.hostname!=="localhost"&&location.protocol!=="file:")
+      msg="Cameras need a secure context — serve over https or http://localhost. Or use the test pattern.";
+    overlayMsg.innerHTML=msg;
+  }
+  function useTestPattern(){
+    const w=state.W, h=Math.round(w*3/4);
+    work.width=w; work.height=h;
+    const g=wctx.createLinearGradient(0,0,w,h);
+    g.addColorStop(0,"#26313d"); g.addColorStop(1,"#cbb488");
+    wctx.fillStyle=g; wctx.fillRect(0,0,w,h);
+    wctx.fillStyle="#f4f1ea"; wctx.beginPath(); wctx.arc(w*0.28,h*0.34,h*0.17,0,7); wctx.fill();
+    wctx.fillStyle="#12161a"; wctx.fillRect(w*0.52,h*0.12,w*0.30,h*0.30);
+    wctx.save(); wctx.translate(w*0.5,h*0.72); wctx.rotate(-0.4);
+    wctx.fillStyle="#e0d050"; wctx.fillRect(-w*0.22,-h*0.05,w*0.44,h*0.1); wctx.restore();
+    wctx.strokeStyle="rgba(255,255,255,.6)"; wctx.lineWidth=1;
+    for(let y=h*0.13;y<h*0.42;y+=4){ wctx.beginPath(); wctx.moveTo(w*0.55,y); wctx.lineTo(w*0.80,y); wctx.stroke(); }
+    state.frozenData=wctx.getImageData(0,0,w,h);
+    state.frozen=true; state.running=true; syncFreeze();
+    overlay.style.display="none"; setStatus("test pattern","frozen");
+    if(!rafOn) loop();
+  }
+
+  // ---------- pipeline ----------
+  let gray=null, gxA=null, gyA=null, W=0, H=0;
+  function alloc(w,h){ if(w===W&&h===H)return; W=w;H=h; gray=new Float32Array(w*h); gxA=new Float32Array(w*h); gyA=new Float32Array(w*h);
+    [cInput,cGx,cGy,cEdge].forEach(c=>{c.width=w;c.height=h;});
+    requestAnimationFrame(drawWires);
+  }
+  let rafOn=false;
+  function loop(){
+    rafOn=true;
+    if(!state.running){ rafOn=false; return; }
+    let w,h;
+    if(state.frozen&&state.frozenData){ w=state.frozenData.width; h=state.frozenData.height;
+      if(work.width!==w){work.width=w;work.height=h;} wctx.putImageData(state.frozenData,0,0);
+    } else if(video.readyState>=2 && video.videoWidth){
+      w=state.W; h=Math.round(w*video.videoHeight/video.videoWidth);
+      if(work.width!==w){work.width=w;work.height=h;} wctx.drawImage(video,0,0,w,h);
+    } else { requestAnimationFrame(loop); return; }
+
+    alloc(w,h);
+    const src=wctx.getImageData(0,0,w,h).data;
+
+    const inImg=xIn.createImageData(w,h), iid=inImg.data;
+    for(let i=0,p=0;i<src.length;i+=4,p++){
+      const y=0.299*src[i]+0.587*src[i+1]+0.114*src[i+2];
+      gray[p]=y; iid[i]=iid[i+1]=iid[i+2]=y; iid[i+3]=255;
+    }
+    xIn.putImageData(inImg,0,0);
+
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      let sx=0,sy=0,ki=0;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+        const xx=x+dx<0?0:x+dx>=w?w-1:x+dx, yy=y+dy<0?0:y+dy>=h?h-1:y+dy;
+        const v=gray[yy*w+xx]; sx+=v*KX[ki]; sy+=v*KY[ki]; ki++;
+      }
+      const p=y*w+x; gxA[p]=sx; gyA[p]=sy;
+    }
+
+    const gxImg=xGx.createImageData(w,h), gyImg=xGy.createImageData(w,h), edImg=xEd.createImageData(w,h);
+    const gd=gxImg.data, yd=gyImg.data, ed=edImg.data, gain=state.gain, thr=state.thr, color=state.color;
+    for(let p=0,i=0;p<w*h;p++,i+=4){
+      const vx=gxA[p], vy=gyA[p];
+      if(color){ paintSigned(gd,i,vx*gain); paintSigned(yd,i,vy*gain); }
+      else { const cx=clamp(128+vx*gain), cy=clamp(128+vy*gain);
+        gd[i]=gd[i+1]=gd[i+2]=cx; yd[i]=yd[i+1]=yd[i+2]=cy; }
+      gd[i+3]=yd[i+3]=255;
+      let mag=Math.sqrt(vx*vx+vy*vy)*gain;
+      let e = thr>0 ? (mag>=thr?255:0) : clamp(mag);
+      ed[i]=ed[i+1]=ed[i+2]=e; ed[i+3]=255;
+    }
+    xGx.putImageData(gxImg,0,0); xGy.putImageData(gyImg,0,0); xEd.putImageData(edImg,0,0);
+    requestAnimationFrame(loop);
+  }
+  function paintSigned(arr,i,v){ arr[i]=clamp(20+(v>0?v:0)); arr[i+1]=20; arr[i+2]=clamp(20+(v<0?-v:0)); }
+  function clamp(v){ return v<0?0:v>255?255:v; }
+
+  // ---------- wires ----------
+  const ARROWS=[
+    {from:"nodeInput",to:"opX"},   // 0 image  -> conv x
+    {from:"wrapKx",  to:"opX"},    // 1 kernel -> conv x
+    {from:"opX",     to:"resGx"},  // 2 conv x -> Gx
+    {from:"nodeInput",to:"opY"},   // 3 image  -> conv y
+    {from:"wrapKy",  to:"opY"},    // 4 kernel -> conv y
+    {from:"opY",     to:"resGy"},  // 5 conv y -> Gy
+    {from:"resGx",   to:"nodeEdge"},// 6
+    {from:"resGy",   to:"nodeEdge"},// 7
+  ];
+  let pathEls=[];
+  function ensureWireEls(){
+    if(pathEls.length) return;
+    ARROWS.forEach((a,idx)=>{
+      const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+      p.setAttribute("fill","none"); p.setAttribute("stroke-width","2"); p.setAttribute("stroke-linecap","round");
+      p.dataset.idx=idx; svg.appendChild(p); pathEls.push(p);
+    });
+  }
+  function drawWires(){
+    ensureWireEls();
+    const cont=diagram.getBoundingClientRect();
+    svg.setAttribute("width",cont.width); svg.setAttribute("height",cont.height);
+    svg.setAttribute("viewBox","0 0 "+cont.width+" "+cont.height);
+    ARROWS.forEach((a,idx)=>{
+      const eA=$("#"+a.from), eB=$("#"+a.to); if(!eA||!eB) return;
+      const A=eA.getBoundingClientRect(), B=eB.getBoundingClientRect();
+      const ax=A.left+A.width/2-cont.left, ay=A.top+A.height/2-cont.top;
+      const bx=B.left+B.width/2-cont.left, by=B.top+B.height/2-cont.top;
+      const dx=bx-ax, dy=by-ay; let x1,y1,x2,y2,c1x,c1y,c2x,c2y;
+      if(Math.abs(dx)>=Math.abs(dy)){
+        x1=(dx>=0?A.right:A.left)-cont.left; y1=ay;
+        x2=(dx>=0?B.left:B.right)-cont.left; y2=by;
+        const o=Math.max(18,Math.abs(x2-x1)*0.45); c1x=x1+(dx>=0?o:-o);c1y=y1;c2x=x2-(dx>=0?o:-o);c2y=y2;
+      } else {
+        x1=ax; y1=(dy>=0?A.bottom:A.top)-cont.top;
+        x2=bx; y2=(dy>=0?B.top:B.bottom)-cont.top;
+        const o=Math.max(14,Math.abs(y2-y1)*0.45); c1x=x1;c1y=y1+(dy>=0?o:-o);c2x=x2;c2y=y2-(dy>=0?o:-o);
+      }
+      pathEls[idx].setAttribute("d",`M${x1},${y1} C${c1x},${c1y} ${c2x},${c2y} ${x2},${y2}`);
+    });
+    styleWires();
+  }
+  function styleWires(){
+    const active = state.walk===null ? [0,1,2,3,4,5,6,7] : WALK[state.walk].arrows;
+    pathEls.forEach((p,idx)=>{
+      const on=active.includes(idx);
+      p.setAttribute("stroke", on?"var(--signal)":"var(--muted)");
+      p.setAttribute("marker-end", on?"url(#ah-hot)":"url(#ah)");
+      p.setAttribute("opacity",(state.walk!==null&&!on)?"0.12":"1");
+      p.classList.toggle("flow",on);
+      p.style.strokeDasharray = on?"6 7":"none";
+      p.style.animation = on?"dash 1s linear infinite":"none";
+    });
+  }
+  const styleTag=document.createElement("style");
+  styleTag.textContent="@keyframes dash{to{stroke-dashoffset:-13}}";
+  document.head.appendChild(styleTag);
+
+  // ---------- walk-through ----------
+  const NODE_IDS=["nodeInput","clX","resGx","clY","resGy","nodeEdge"];
+  const WALK=[
+    {nodes:["nodeInput"], arrows:[],
+     ix:"1 / 4", text:"Start with the <b>intensity</b> image. Sobel measures how brightness changes, so colour is discarded — every pixel is now a single grey value."},
+    {nodes:["nodeInput","clX","resGx"], arrows:[0,1,2],
+     ix:"2 / 4", text:"Feed the image and the horizontal kernel <code>G\u2093</code> into a <b>convolution</b> (⊛). The result approximates ∂I/∂x and lights up on <b>vertical</b> edges. Grey = 0, lighter = positive slope, darker = negative."},
+    {nodes:["nodeInput","clX","resGx","clY","resGy"], arrows:[0,1,2,3,4,5],
+     ix:"3 / 4", text:"The same operation with the transposed kernel <code>G\u1d67</code> gives ∂I/∂y, responding to <b>horizontal</b> edges. Every pixel now has a 2-D gradient vector (G\u2093, G\u1d67)."},
+    {nodes:["nodeInput","clX","resGx","clY","resGy","nodeEdge"], arrows:[0,1,2,3,4,5,6,7],
+     ix:"4 / 4", text:"Combine the two components into gradient <b>magnitude</b> <code>√(G\u2093² + G\u1d67²)</code> — the edge-strength image, bright wherever intensity changes fastest in any direction."},
+  ];
+  const capIx=$("#capIx"), capText=$("#capText");
+  const wStart=$("#walkStart"), wPrev=$("#walkPrev"), wNext=$("#walkNext"), wExit=$("#walkExit");
+  function applyWalk(){
+    const active = state.walk===null ? null : WALK[state.walk].nodes;
+    NODE_IDS.forEach(id=>{
+      const el=$("#"+id);
+      el.classList.toggle("dim", active!==null && !active.includes(id));
+      el.classList.toggle("hot", active!==null && active.includes(id) && active[active.length-1]===id);
+    });
+    if(state.walk===null){
+      capIx.hidden=true; capText.innerHTML="Full pipeline running live. Move something in front of the camera and watch the gradients respond.";
+      wStart.hidden=false; wPrev.hidden=wNext.hidden=wExit.hidden=true;
+    } else {
+      const s=WALK[state.walk]; capIx.hidden=false; capIx.textContent="step "+s.ix; capText.innerHTML=s.text;
+      wStart.hidden=true; wExit.hidden=false; wPrev.hidden=false; wNext.hidden=false;
+      wPrev.disabled=state.walk===0; wPrev.style.opacity=state.walk===0?.4:1;
+      wNext.textContent = state.walk===WALK.length-1 ? "Finish ▶" : "Next ▶";
+    }
+    styleWires();
+  }
+  wStart.addEventListener("click",()=>{ state.walk=0; applyWalk(); });
+  wPrev.addEventListener("click",()=>{ if(state.walk>0){state.walk--; applyWalk();} });
+  wNext.addEventListener("click",()=>{ if(state.walk<WALK.length-1){state.walk++; applyWalk();} else {state.walk=null; applyWalk();} });
+  wExit.addEventListener("click",()=>{ state.walk=null; applyWalk(); });
+
+  // ---------- UI ----------
+  function setStatus(t,c){ statusText.textContent=t; statusDot.className="dot"+(c?" "+c:""); }
+  function syncFreeze(){ const b=$("#freezeBtn"); b.setAttribute("aria-pressed",state.frozen);
+    if(state.stream||state.frozenData) setStatus(state.frozen?"frozen":"live", state.frozen?"frozen":"live"); }
+
+  $("#startBtn").addEventListener("click",startCamera);
+  $("#startBtn2").addEventListener("click",startCamera);
+  $("#patternBtn").addEventListener("click",useTestPattern);
+  $("#patternBtn2").addEventListener("click",useTestPattern);
+  $("#stopBtn").addEventListener("click",stopCamera);
+  $("#freezeBtn").addEventListener("click",()=>{
+    if(!state.running&&!state.frozenData) return;
+    if(!state.frozen){ if(work.width) state.frozenData=wctx.getImageData(0,0,work.width,work.height); state.frozen=true; }
+    else { state.frozen=false; state.frozenData=null; }
+    syncFreeze();
+  });
+  $("#gain").addEventListener("input",e=>{ state.gain=parseFloat(e.target.value); $("#gainV").textContent=state.gain.toFixed(1); });
+  $("#thr").addEventListener("input",e=>{ state.thr=parseInt(e.target.value); $("#thrV").textContent=state.thr===0?"off":state.thr; });
+  $("#colorGrad").addEventListener("change",e=>{ state.color=e.target.checked; });
+  $("#res").addEventListener("change",e=>{ state.W=parseInt(e.target.value);
+    if(state.frozenData&&!state.stream) useTestPattern(); else { W=0; if(work.width) work.width=0; } });
+
+  window.addEventListener("keydown",e=>{
+    if(/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+    if(e.code==="Space"){ e.preventDefault(); $("#freezeBtn").click(); }
+    else if(e.key==="ArrowRight"){ if(state.walk===null) wStart.click(); else wNext.click(); }
+    else if(e.key==="ArrowLeft"){ if(state.walk!==null) wPrev.click(); }
+    else if(e.key==="Escape"){ if(state.walk!==null) wExit.click(); }
+  });
+
+  const ro=new ResizeObserver(()=>drawWires()); ro.observe(diagram);
+  window.addEventListener("resize",drawWires);
+
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    overlayMsg.innerHTML="This browser doesn't expose <code>getUserMedia</code>. Use the test pattern to explore every stage.";
+  }
+  requestAnimationFrame(drawWires);
+})();
+</script>
+</body>
+</html>

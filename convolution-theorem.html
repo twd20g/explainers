@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Convolution Theorem — live dataflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#10141a; --panel:#171c24; --panel-2:#1e242e;
+    --line:#2a3340; --line-soft:#222933;
+    --ink:#edebe4; --muted:#7e8996; --muted-2:#59626e;
+    --signal:#46d6c0; --signal-dim:rgba(70,214,192,.14);
+    --violet:#9b8cff; --violet-dim:rgba(155,140,255,.16);
+    --amber:#e7a44c; --amber-dim:rgba(231,164,76,.14);
+    --coral:#e56a5a;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 12px 34px rgba(0,0,0,.45);
+    --disp:"Space Grotesk",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+    --body:"Inter",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      linear-gradient(0deg,rgba(255,255,255,.015) 1px,transparent 1px) 0 0/100% 26px,
+      linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px) 0 0/26px 100%,
+      radial-gradient(1200px 700px at 78% -10%, #182029 0%, var(--bg) 60%);
+    color:var(--ink); font-family:var(--body); line-height:1.5; min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  code{font-family:var(--mono)}
+
+  header.bench{
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:15px 22px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(23,28,36,.9),rgba(16,20,26,.6));
+    backdrop-filter:blur(6px);position:sticky;top:0;z-index:30;
+  }
+  .brand{display:flex;align-items:baseline;gap:12px;margin-right:auto;flex-wrap:wrap}
+  .brand h1{font-family:var(--disp);font-weight:700;font-size:19px;letter-spacing:-.01em;margin:0}
+  .brand .thm{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .brand .thm b{color:var(--signal)}
+  .status{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11.5px;color:var(--muted);letter-spacing:.05em}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted-2)}
+  .dot.live{background:var(--signal);box-shadow:0 0 12px 1px var(--signal)}
+  .dot.frozen{background:var(--amber);box-shadow:0 0 12px 1px var(--amber)}
+  .dot.err{background:var(--coral)}
+
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:12px 22px;border-bottom:1px solid var(--line);max-width:1600px;margin:0 auto}
+  button{font-family:var(--body);cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);font-size:13px;padding:8px 13px;transition:border-color .15s,background .15s,color .15s}
+  button:hover{border-color:var(--muted)}
+  button:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  button.primary{background:var(--signal-dim);border-color:var(--signal);color:var(--signal);font-weight:600}
+  button.primary:hover{background:rgba(70,214,192,.22)}
+  button.danger{color:var(--coral);border-color:transparent;background:transparent}
+  button.danger:hover{border-color:var(--coral)}
+  button[aria-pressed="true"]{background:var(--amber-dim);border-color:var(--amber);color:var(--amber);font-weight:600}
+  .sep{width:1px;align-self:stretch;background:var(--line);margin:0 2px}
+  .ctl{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.03em}
+  .ctl b{color:var(--ink)}
+  input[type=range]{width:96px;-webkit-appearance:none;height:4px;border-radius:3px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--signal);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border:none;border-radius:50%;background:var(--signal);cursor:pointer}
+  select{font-family:var(--mono);font-size:11.5px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:6px 8px}
+
+  /* diagram */
+  .diagram{
+    position:relative;max-width:1600px;margin:22px auto 6px;padding:8px 22px 12px;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 56px minmax(0,.9fr) 60px minmax(0,.9fr) 56px minmax(0,1fr);
+    grid-template-rows:auto auto;gap:18px 26px;align-items:center;
+  }
+  #wires{position:absolute;inset:0;pointer-events:none;z-index:1;overflow:visible}
+
+  .node{position:relative;z-index:2;background:var(--panel);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow);overflow:hidden;transition:opacity .3s,border-color .3s,box-shadow .3s}
+  .node.dim,.op.dim{opacity:.2}
+  .node.hot{border-color:var(--signal);box-shadow:0 0 0 1px var(--signal-dim),0 12px 34px rgba(0,0,0,.5)}
+  .node-hd{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line-soft);font-family:var(--mono);font-size:11.5px;color:var(--ink);font-weight:600;letter-spacing:.02em}
+  .node-ix{font-size:10px;border-radius:5px;padding:2px 6px;letter-spacing:.05em;white-space:nowrap}
+  .ix-sp{color:var(--signal);background:var(--signal-dim)}
+  .ix-fq{color:var(--violet);background:var(--violet-dim)}
+  .node-body{padding:11px}
+  .node canvas{display:block;width:100%;height:auto;border-radius:7px;background:#0b0e12;image-rendering:pixelated}
+  .cap{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:7px;text-align:center;letter-spacing:.04em}
+
+  /* placement */
+  .nodeInput{grid-column:1;grid-row:1}
+  .nodeKernel{grid-column:1;grid-row:2}
+  .opFx{grid-column:2;grid-row:1}
+  .opFh{grid-column:2;grid-row:2}
+  .specF{grid-column:3;grid-row:1}
+  .specH{grid-column:3;grid-row:2}
+  .opMul{grid-column:4;grid-row:1 / span 2}
+  .specP{grid-column:5;grid-row:1 / span 2}
+  .opInv{grid-column:6;grid-row:1 / span 2}
+  .nodeOut{grid-column:7;grid-row:1 / span 2}
+
+  /* operator circles */
+  .op{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:5px;transition:opacity .3s}
+  .op .disc{
+    width:50px;height:50px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    background:var(--panel);font-family:var(--mono);line-height:1;
+  }
+  .op.f .disc{border:1px solid var(--violet);color:var(--violet);box-shadow:0 0 0 5px var(--violet-dim);font-size:19px}
+  .op.m .disc{border:1px solid var(--amber);color:var(--amber);box-shadow:0 0 0 5px var(--amber-dim);font-size:22px}
+  .op .lab{font-family:var(--mono);font-size:8.5px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;text-align:center}
+
+  /* editable kernel */
+  .kgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:4px 0 9px}
+  .kgrid input{font-family:var(--mono);font-size:14px;text-align:center;color:var(--amber);background:#141821;border:1px solid var(--line);border-radius:7px;padding:9px 2px;width:100%;-moz-appearance:textfield;transition:border-color .12s,box-shadow .12s}
+  .kgrid input::-webkit-outer-spin-button,.kgrid input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .kgrid input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 2px var(--amber-dim)}
+  .kgrid input.center{border-color:rgba(231,164,76,.4)}
+  .krow{display:flex;gap:8px;align-items:center;margin-top:4px}
+  .krow select{flex:1}
+  .knorm{display:flex;gap:7px;align-items:center;font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:8px;cursor:pointer}
+
+  .badge{display:inline-block;font-family:var(--mono);font-size:11.5px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:9px}
+  .badge sup,.badge sub{font-size:8px}
+  .badge .op{color:var(--signal)}
+
+  .caption{max-width:1600px;margin:0 auto;padding:8px 22px 4px;min-height:46px;display:flex;align-items:center;gap:14px}
+  .caption .step-ix{font-family:var(--mono);font-size:11px;color:var(--signal);border:1px solid var(--signal);border-radius:20px;padding:3px 10px;white-space:nowrap;letter-spacing:.06em}
+  .caption p{margin:0;font-size:14px;color:var(--ink);max-width:100ch}
+  .caption code{color:var(--amber);font-size:12.5px}
+
+  .walkbar{display:flex;gap:8px;align-items:center;max-width:1600px;margin:0 auto;padding:2px 22px 24px}
+  .walkbar .grow{flex:1}
+
+  .stage-overlay{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;padding:30px;background:rgba(11,14,18,.92)}
+  .stage-overlay p{max-width:46ch;color:var(--muted);font-size:14px;margin:0}
+  .stage-overlay .err-title{color:var(--coral);font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+
+  .foot{max-width:1600px;margin:0 auto;padding:0 24px 40px;color:var(--muted-2);font-size:12px;font-family:var(--mono);line-height:1.7}
+  .foot kbd{background:var(--panel-2);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:11px;color:var(--ink)}
+  .foot .fq{color:var(--violet)}
+
+  @media (max-width:1080px){
+    .diagram{grid-template-columns:1fr;grid-template-rows:auto;gap:26px}
+    .nodeInput,.nodeKernel,.opFx,.opFh,.specF,.specH,.opMul,.specP,.opInv,.nodeOut{grid-column:1;grid-row:auto}
+    .nodeInput{order:1}.opFx{order:2}.specF{order:3}.nodeKernel{order:4}.opFh{order:5}.specH{order:6}
+    .opMul{order:7}.specP{order:8}.opInv{order:9}.nodeOut{order:10}
+    .op{flex-direction:row;gap:12px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}#wires .flow{stroke-dasharray:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="bench">
+  <div class="brand">
+    <h1>The Convolution Theorem</h1>
+    <span class="thm">f&nbsp;∗&nbsp;h&nbsp;=&nbsp;<b>ℱ⁻¹</b>{&nbsp;<b>ℱ</b>{f}&nbsp;·&nbsp;<b>ℱ</b>{h}&nbsp;}</span>
+  </div>
+  <div class="status" role="status" aria-live="polite">
+    <span class="dot" id="statusDot"></span><span id="statusText">camera idle</span>
+  </div>
+</header>
+
+<div class="controls">
+  <button class="primary" id="startBtn">Start camera</button>
+  <button id="patternBtn">Test pattern</button>
+  <button id="freezeBtn" aria-pressed="false">Freeze</button>
+  <button id="stopBtn" class="danger">Stop</button>
+  <span class="sep"></span>
+  <div class="ctl"><label for="gain">output gain</label><input type="range" id="gain" min="0.2" max="4" step="0.1" value="1"><b id="gainV">1.0</b></div>
+  <span class="sep"></span>
+  <label class="ctl" style="cursor:pointer"><input type="checkbox" id="win" checked> edge window <span style="color:var(--muted-2)">(anti-leakage)</span></label>
+  <span class="sep"></span>
+  <label class="ctl" style="cursor:pointer"><input type="checkbox" id="dc" checked> remove DC</label>
+  <span class="sep"></span>
+  <label class="ctl" style="cursor:pointer"><input type="checkbox" id="blur" checked> denoise <span style="color:var(--muted-2)">(blur)</span></label>
+  <span class="sep"></span>
+  <div class="ctl"><label for="res">grid</label>
+    <select id="res"><option value="64">64²</option><option value="128" selected>128²</option><option value="256">256² (heavy)</option></select>
+  </div>
+</div>
+
+<main class="diagram" id="diagram">
+  <svg id="wires" aria-hidden="true">
+    <defs>
+      <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3 L0,6 Z" fill="var(--muted)"></path></marker>
+      <marker id="ah-hot" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3 L0,6 Z" fill="var(--signal)"></path></marker>
+    </defs>
+  </svg>
+
+  <!-- INPUT -->
+  <section class="node nodeInput" id="nodeInput">
+    <div class="node-hd"><span class="node-ix ix-sp">space</span> Input · f(x,y)</div>
+    <div class="node-body"><canvas id="cInput"></canvas></div>
+  </section>
+
+  <!-- KERNEL (editable) -->
+  <section class="node nodeKernel" id="nodeKernel">
+    <div class="node-hd"><span class="node-ix ix-sp">space</span> Kernel · h(x,y)</div>
+    <div class="node-body">
+      <div class="kgrid" id="kgrid"></div>
+      <div class="krow">
+        <select id="preset">
+          <option value="gauss" selected>gaussian blur</option>
+          <option value="box">box blur</option>
+          <option value="sharpen">sharpen</option>
+          <option value="laplace">laplacian edge</option>
+          <option value="emboss">emboss</option>
+          <option value="sobelx">sobel ∂x</option>
+          <option value="identity">identity</option>
+        </select>
+      </div>
+      <label class="knorm"><input type="checkbox" id="knorm" checked> normalise by Σ</label>
+    </div>
+  </section>
+
+  <!-- FFT operators -->
+  <div class="op f opFx" id="opFx"><div class="disc">ℱ</div><span class="lab">FFT</span></div>
+  <div class="op f opFh" id="opFh"><div class="disc">ℱ</div><span class="lab">FFT</span></div>
+
+  <!-- Spectra -->
+  <section class="node specF" id="specF">
+    <div class="node-hd"><span class="node-ix ix-fq">freq</span> F(u,v)</div>
+    <div class="node-body"><canvas id="cSpecF"></canvas><div class="cap">log |spectrum|</div></div>
+  </section>
+  <section class="node specH" id="specH">
+    <div class="node-hd"><span class="node-ix ix-fq">freq</span> H(u,v)</div>
+    <div class="node-body"><canvas id="cSpecH"></canvas><div class="cap">log |spectrum|</div></div>
+  </section>
+
+  <!-- multiply -->
+  <div class="op m opMul" id="opMul"><div class="disc">×</div><span class="lab">pointwise</span></div>
+
+  <!-- product -->
+  <section class="node specP" id="specP">
+    <div class="node-hd"><span class="node-ix ix-fq">freq</span> F · H</div>
+    <div class="node-body"><canvas id="cSpecP"></canvas><div class="cap">product spectrum</div></div>
+  </section>
+
+  <!-- inverse -->
+  <div class="op f opInv" id="opInv"><div class="disc">ℱ⁻¹</div><span class="lab">inverse</span></div>
+
+  <!-- output -->
+  <section class="node nodeOut" id="nodeOut">
+    <div class="node-hd"><span class="node-ix ix-sp">space</span> f ∗ h</div>
+    <div class="node-body">
+      <div class="badge">= ℱ⁻¹{ F·H }</div>
+      <canvas id="cOut"></canvas>
+    </div>
+  </section>
+</main>
+
+<div class="caption">
+  <span class="step-ix" id="capIx" hidden>step</span>
+  <p id="capText">Edit the kernel and watch every downstream panel update. Use <b>Walk through</b> to reveal the theorem one stage at a time.</p>
+</div>
+
+<div class="walkbar">
+  <button id="walkStart" class="primary">Walk through</button>
+  <button id="walkPrev" hidden>◀ Back</button>
+  <button id="walkNext" hidden>Next ▶</button>
+  <span class="grow"></span>
+  <button id="walkExit" hidden class="danger">Show whole pipeline</button>
+</div>
+
+<p class="foot">
+  <kbd>Space</kbd> freeze · <kbd>→</kbd>/<kbd>←</kbd> walk · <kbd>Esc</kbd> show all.<br>
+  <span class="fq">Frequency-domain</span> panels show the log-magnitude spectrum, fft-shifted so the DC term sits at the centre and low frequencies are central. Multiplying two spectra (the product panel) is the same operation as sliding the kernel across the image. Because the FFT assumes periodicity, this is a <em>circular</em> convolution — the interior matches a spatial convolution exactly; only the wrap-around border differs. The <b>edge window</b> tapers the crop toward the mean grey at its border (a Tukey window): without it, the hard crop edge leaks each spectral peak into a horizontal + vertical cross, since the transform of a rectangular window is a 2-D sinc. Toggle it off to see the leakage. <b>Remove DC</b> hides the bright central term so the display keys its brightness off the real peaks (spectrum-only — the reconstructed output keeps its mean). <b>Denoise</b> applies a light Gaussian to the frame first, which suppresses sensor/JPEG aliasing before it reaches the transform. All computation is local to your browser.
+</p>
+
+<div class="stage-overlay" id="overlay">
+  <p id="overlayMsg">Grant camera access to run the transform live, or use a synthetic test pattern to explore it without a webcam.</p>
+  <div style="display:flex;gap:10px">
+    <button class="primary" id="startBtn2">Start camera</button>
+    <button id="patternBtn2">Use test pattern</button>
+  </div>
+</div>
+
+<video id="video" autoplay playsinline muted style="display:none"></video>
+<canvas id="work" style="display:none"></canvas>
+
+<script>
+(function(){
+  "use strict";
+  const $=s=>document.querySelector(s);
+
+  const video=$("#video"), work=$("#work"), wctx=work.getContext("2d",{willReadFrequently:true});
+  const cInput=$("#cInput"), cSpecF=$("#cSpecF"), cSpecH=$("#cSpecH"), cSpecP=$("#cSpecP"), cOut=$("#cOut");
+  const xIn=cInput.getContext("2d"), xF=cSpecF.getContext("2d"), xH=cSpecH.getContext("2d"), xP=cSpecP.getContext("2d"), xO=cOut.getContext("2d");
+  const statusDot=$("#statusDot"), statusText=$("#statusText");
+  const overlay=$("#overlay"), overlayMsg=$("#overlayMsg");
+  const diagram=$("#diagram"), svg=$("#wires");
+
+  const state={ stream:null, running:false, frozen:false, frozenData:null,
+    N:128, gain:1, kernel:[1,2,1,2,4,2,1,2,1], norm:true, kernelDirty:true, signed:false, window:true, dcRemove:true, blur:true, walk:null };
+
+  // ---------- FFT ----------
+  let N=0, Fr,Fi,Pr,Pi,Hr,Hi,mag,scR,scI,win,lumA,lumB,tmpB;
+  function alloc(n){
+    if(n===N) return;
+    N=n; state.N=n;
+    Fr=new Float64Array(n*n); Fi=new Float64Array(n*n);
+    Pr=new Float64Array(n*n); Pi=new Float64Array(n*n);
+    Hr=new Float64Array(n*n); Hi=new Float64Array(n*n);
+    mag=new Float64Array(n*n); scR=new Float64Array(n); scI=new Float64Array(n);
+    lumA=new Float64Array(n*n); lumB=new Float64Array(n*n); tmpB=new Float64Array(n*n);
+    buildWindow(n);
+    [cInput,cSpecF,cSpecH,cSpecP,cOut].forEach(c=>{c.width=n;c.height=n;});
+    state.kernelDirty=true;
+    requestAnimationFrame(drawWires);
+  }
+  function fft1d(re,im,invert){
+    const n=re.length;
+    for(let i=1,j=0;i<n;i++){ let bit=n>>1; for(;j&bit;bit>>=1) j^=bit; j^=bit;
+      if(i<j){ const tr=re[i];re[i]=re[j];re[j]=tr; const ti=im[i];im[i]=im[j];im[j]=ti; } }
+    for(let len=2;len<=n;len<<=1){
+      const ang=2*Math.PI/len*(invert?1:-1), wr=Math.cos(ang), wi=Math.sin(ang);
+      for(let i=0;i<n;i+=len){ let cr=1,ci=0;
+        for(let k=0;k<len/2;k++){
+          const aR=re[i+k],aI=im[i+k], bR=re[i+k+len/2],bI=im[i+k+len/2];
+          const vR=bR*cr-bI*ci, vI=bR*ci+bI*cr;
+          re[i+k]=aR+vR; im[i+k]=aI+vI; re[i+k+len/2]=aR-vR; im[i+k+len/2]=aI-vI;
+          const nr=cr*wr-ci*wi; ci=cr*wi+ci*wr; cr=nr;
+        } } }
+    if(invert){ for(let i=0;i<n;i++){ re[i]/=n; im[i]/=n; } }
+  }
+  function fft2d(re,im,invert){
+    for(let y=0;y<N;y++){ const o=y*N;
+      for(let x=0;x<N;x++){scR[x]=re[o+x];scI[x]=im[o+x];}
+      fft1d(scR,scI,invert);
+      for(let x=0;x<N;x++){re[o+x]=scR[x];im[o+x]=scI[x];} }
+    for(let x=0;x<N;x++){
+      for(let y=0;y<N;y++){scR[y]=re[y*N+x];scI[y]=im[y*N+x];}
+      fft1d(scR,scI,invert);
+      for(let y=0;y<N;y++){re[y*N+x]=scR[y];im[y*N+x]=scI[y];} }
+  }
+  // Separable Tukey (tapered-cosine) window: flat centre, cosine-tapered edges.
+  // Removes the crop's boundary discontinuity -> kills the sinc "cross" leakage
+  // through spectral peaks, while leaving the middle of the image intact.
+  function buildWindow(n){
+    const A=0.5; // fraction of the span that is tapered (split across both edges)
+    const w1=new Float64Array(n);
+    for(let i=0;i<n;i++){
+      const r=i/(n-1); let v;
+      if(r<A/2)          v=0.5*(1+Math.cos(Math.PI*(2*r/A - 1)));
+      else if(r<=1-A/2)  v=1;
+      else               v=0.5*(1+Math.cos(Math.PI*(2*r/A - 2/A + 1)));
+      w1[i]=v;
+    }
+    win=new Float64Array(n*n);
+    for(let y=0;y<n;y++)for(let x=0;x<n;x++) win[y*n+x]=w1[y]*w1[x];
+  }
+  // Light separable Gaussian [1,2,1]/4 x [1,2,1]/4, replicate border.
+  // Pre-filter that suppresses sensor/JPEG aliasing before the transform.
+  function blur3(src,dst){
+    const n=N;
+    for(let y=0;y<n;y++){ const o=y*n;
+      for(let x=0;x<n;x++){ const l=x>0?x-1:0, r=x<n-1?x+1:x;
+        tmpB[o+x]=(src[o+l]+2*src[o+x]+src[o+r])*0.25; } }
+    for(let y=0;y<n;y++){ const o=y*n, tt=(y>0?y-1:0)*n, bb=(y<n-1?y+1:y)*n;
+      for(let x=0;x<n;x++){ dst[o+x]=(tmpB[tt+x]+2*tmpB[o+x]+tmpB[bb+x])*0.25; } }
+  }
+
+  // ---------- kernel ----------
+  const PRESETS={
+    gauss:[1,2,1,2,4,2,1,2,1], box:[1,1,1,1,1,1,1,1,1], sharpen:[0,-1,0,-1,5,-1,0,-1,0],
+    laplace:[-1,-1,-1,-1,8,-1,-1,-1,-1], emboss:[-2,-1,0,-1,1,1,0,1,2], sobelx:[-1,0,1,-2,0,2,-1,0,1],
+    identity:[0,0,0,0,1,0,0,0,0]
+  };
+  const kgrid=$("#kgrid");
+  function buildKernelGrid(){
+    kgrid.innerHTML="";
+    state.kernel.forEach((v,idx)=>{
+      const inp=document.createElement("input"); inp.type="number"; inp.step="1"; inp.value=v;
+      inp.setAttribute("aria-label","kernel cell "+(idx+1));
+      if(idx===4) inp.classList.add("center");
+      inp.addEventListener("input",()=>{ state.kernel[idx]=parseFloat(inp.value)||0; state.kernelDirty=true; });
+      kgrid.appendChild(inp);
+    });
+  }
+  function buildKernelFFT(){
+    Hr.fill(0); Hi.fill(0);
+    const k=state.kernel; let sum=0; for(let i=0;i<9;i++) sum+=k[i];
+    const div=(state.norm && Math.abs(sum)>1e-6)? sum:1;
+    for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){
+      Hr[((i+N)%N)*N+((j+N)%N)] = k[(i+1)*3+(j+1)]/div;
+    }
+    const sumUsed = (state.norm && Math.abs(sum)>1e-6) ? 1 : sum;
+    state.signed = Math.abs(sumUsed) < 0.5;   // edge-like kernels -> signed output display
+    fft2d(Hr,Hi,false);                        // Hr,Hi now hold H(u,v)
+    drawSpectrum(xH,Hr,Hi);
+    state.kernelDirty=false;
+  }
+
+  // ---------- rendering ----------
+  function drawSpectrum(ctx,re,im){
+    const skipDC=state.dcRemove;
+    let max=1e-9;
+    for(let i=0;i<N*N;i++){ const m=Math.log(1+Math.hypot(re[i],im[i])); mag[i]=m; if(m>max && !(skipDC&&i===0)) max=m; }
+    const img=ctx.createImageData(N,N), d=img.data, half=N>>1;
+    for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+      const sy=(y+half)%N, sx=(x+half)%N;       // fft-shift: DC to centre
+      const v = (skipDC && sy===0 && sx===0) ? 0 : mag[sy*N+sx]/max*255;
+      const di=(y*N+x)*4; d[di]=v*0.34; d[di+1]=v; d[di+2]=v*0.86; d[di+3]=255;
+    }
+    ctx.putImageData(img,0,0);
+  }
+  function drawOutput(re){
+    const img=xO.createImageData(N,N), d=img.data, g=state.gain, signed=state.signed;
+    for(let p=0,i=0;p<N*N;p++,i+=4){
+      let v = signed ? clamp(128+re[p]*g) : clamp(re[p]*g);
+      d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
+    }
+    xO.putImageData(img,0,0);
+  }
+  function clamp(v){ return v<0?0:v>255?255:v; }
+
+  // ---------- capture ----------
+  async function startCamera(){
+    try{
+      setStatus("requesting…","");
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:false});
+      state.stream=stream; video.srcObject=stream; await video.play();
+      overlay.style.display="none"; state.running=true; state.frozen=false; state.frozenData=null;
+      setStatus("live","live"); syncFreeze(); loop();
+    }catch(err){ showError(err); }
+  }
+  function stopCamera(){
+    if(state.stream){ state.stream.getTracks().forEach(t=>t.stop()); state.stream=null; }
+    state.running=false; setStatus("camera idle","");
+    overlay.querySelector(".err-title")?.remove();
+    overlayMsg.innerHTML="Camera stopped. Start it again or use a test pattern.";
+    overlay.style.display="flex";
+  }
+  function showError(err){
+    setStatus("no camera","err"); state.running=false; overlay.style.display="flex";
+    if(!overlay.querySelector(".err-title")){ const t=document.createElement("div"); t.className="err-title"; t.textContent="camera unavailable"; overlay.insertBefore(t,overlayMsg); }
+    let msg="Couldn't open the camera.";
+    if(err&&err.name==="NotAllowedError") msg="Permission was blocked. In Safari, serve over http://localhost (file:// can't use the camera) — or use the test pattern.";
+    else if(err&&err.name==="NotFoundError") msg="No camera found. Everything still works with the test pattern.";
+    else if(location.protocol!=="https:"&&location.hostname!=="localhost"&&location.protocol!=="file:")
+      msg="Cameras need a secure context — serve over https or http://localhost. Or use the test pattern.";
+    overlayMsg.innerHTML=msg;
+  }
+  function useTestPattern(){
+    const n=state.N; work.width=n; work.height=n;
+    const g=wctx.createLinearGradient(0,0,n,n); g.addColorStop(0,"#243040"); g.addColorStop(1,"#c8b189");
+    wctx.fillStyle=g; wctx.fillRect(0,0,n,n);
+    wctx.fillStyle="#f4f1ea"; wctx.beginPath(); wctx.arc(n*0.34,n*0.36,n*0.16,0,7); wctx.fill();
+    wctx.fillStyle="#12161a"; wctx.fillRect(n*0.55,n*0.15,n*0.28,n*0.28);
+    wctx.strokeStyle="rgba(255,255,255,.7)"; wctx.lineWidth=1;
+    for(let y=n*0.6;y<n*0.9;y+=3){ wctx.beginPath(); wctx.moveTo(n*0.12,y); wctx.lineTo(n*0.9,y); wctx.stroke(); }
+    for(let x=n*0.12;x<n*0.45;x+=3){ wctx.beginPath(); wctx.moveTo(x,n*0.58); wctx.lineTo(x,n*0.92); wctx.stroke(); }
+    state.frozenData=wctx.getImageData(0,0,n,n); state.frozen=true; state.running=true; syncFreeze();
+    overlay.style.display="none"; setStatus("test pattern","frozen");
+    if(!rafOn) loop();
+  }
+
+  // ---------- main loop ----------
+  let rafOn=false;
+  function loop(){
+    rafOn=true; if(!state.running){ rafOn=false; return; }
+    const n=state.N; alloc(n);
+
+    // square source -> work (n x n)
+    if(state.frozen && state.frozenData){
+      if(state.frozenData.width!==n){ // stale after res change
+        if(!state.stream){ useTestPattern(); return; }
+        state.frozen=false; state.frozenData=null;
+      } else { if(work.width!==n){work.width=n;work.height=n;} wctx.putImageData(state.frozenData,0,0); }
+    }
+    if(!(state.frozen&&state.frozenData)){
+      if(video.readyState>=2 && video.videoWidth){
+        const vw=video.videoWidth, vh=video.videoHeight, side=Math.min(vw,vh);
+        if(work.width!==n){work.width=n;work.height=n;}
+        wctx.drawImage(video,(vw-side)/2,(vh-side)/2,side,side,0,0,n,n);
+      } else { requestAnimationFrame(loop); return; }
+    }
+
+    const src=wctx.getImageData(0,0,n,n).data;
+    // --- pre-conditioning: luma -> optional denoise blur -> (display) -> window -> FFT
+    for(let i=0,p=0;i<src.length;i+=4,p++){
+      lumA[p]=0.299*src[i]+0.587*src[i+1]+0.114*src[i+2];
+    }
+    let srcL=lumA;
+    if(state.blur){ blur3(lumA,lumB); srcL=lumB; }
+    let mean=0; for(let p=0;p<n*n;p++) mean+=srcL[p]; mean/=n*n;
+    const inImg=xIn.createImageData(n,n), iid=inImg.data, useWin=state.window;
+    for(let p=0,i=0;p<n*n;p++,i+=4){
+      const g=srcL[p];
+      const gc = g<0?0:g>255?255:g;
+      iid[i]=iid[i+1]=iid[i+2]=gc; iid[i+3]=255;   // input panel shows the de-aliased image
+      Fr[p] = useWin ? (mean + (g-mean)*win[p]) : g; Fi[p]=0;   // taper toward mean grey, not black
+    }
+    xIn.putImageData(inImg,0,0);
+
+    if(state.kernelDirty) buildKernelFFT();
+
+    fft2d(Fr,Fi,false);           // F(u,v)
+    drawSpectrum(xF,Fr,Fi);
+
+    for(let p=0;p<n*n;p++){        // pointwise complex product F·H
+      const ar=Fr[p],ai=Fi[p],br=Hr[p],bi=Hi[p];
+      Pr[p]=ar*br-ai*bi; Pi[p]=ar*bi+ai*br;
+    }
+    drawSpectrum(xP,Pr,Pi);
+
+    fft2d(Pr,Pi,true);            // back to space
+    drawOutput(Pr);
+
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- wires ----------
+  const ARROWS=[
+    {from:"nodeInput",to:"opFx"}, {from:"opFx",to:"specF"},     // 0,1
+    {from:"nodeKernel",to:"opFh"}, {from:"opFh",to:"specH"},    // 2,3
+    {from:"specF",to:"opMul"}, {from:"specH",to:"opMul"},       // 4,5
+    {from:"opMul",to:"specP"}, {from:"specP",to:"opInv"},       // 6,7
+    {from:"opInv",to:"nodeOut"}                                 // 8
+  ];
+  let pathEls=[];
+  function ensureWireEls(){ if(pathEls.length) return;
+    ARROWS.forEach((a,idx)=>{ const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+      p.setAttribute("fill","none"); p.setAttribute("stroke-width","2"); p.setAttribute("stroke-linecap","round");
+      p.dataset.idx=idx; svg.appendChild(p); pathEls.push(p); }); }
+  function drawWires(){
+    ensureWireEls();
+    const cont=diagram.getBoundingClientRect();
+    svg.setAttribute("width",cont.width); svg.setAttribute("height",cont.height);
+    svg.setAttribute("viewBox","0 0 "+cont.width+" "+cont.height);
+    ARROWS.forEach((a,idx)=>{
+      const eA=$("#"+a.from), eB=$("#"+a.to); if(!eA||!eB) return;
+      const A=eA.getBoundingClientRect(), B=eB.getBoundingClientRect();
+      const ax=A.left+A.width/2-cont.left, ay=A.top+A.height/2-cont.top;
+      const bx=B.left+B.width/2-cont.left, by=B.top+B.height/2-cont.top;
+      const dx=bx-ax, dy=by-ay; let x1,y1,x2,y2,c1x,c1y,c2x,c2y;
+      if(Math.abs(dx)>=Math.abs(dy)){
+        x1=(dx>=0?A.right:A.left)-cont.left; y1=ay; x2=(dx>=0?B.left:B.right)-cont.left; y2=by;
+        const o=Math.max(16,Math.abs(x2-x1)*0.45); c1x=x1+(dx>=0?o:-o);c1y=y1;c2x=x2-(dx>=0?o:-o);c2y=y2;
+      } else {
+        x1=ax; y1=(dy>=0?A.bottom:A.top)-cont.top; x2=bx; y2=(dy>=0?B.top:B.bottom)-cont.top;
+        const o=Math.max(14,Math.abs(y2-y1)*0.45); c1x=x1;c1y=y1+(dy>=0?o:-o);c2x=x2;c2y=y2-(dy>=0?o:-o);
+      }
+      pathEls[idx].setAttribute("d",`M${x1},${y1} C${c1x},${c1y} ${c2x},${c2y} ${x2},${y2}`);
+    });
+    styleWires();
+  }
+  function styleWires(){
+    const active = state.walk===null ? [0,1,2,3,4,5,6,7,8] : WALK[state.walk].arrows;
+    pathEls.forEach((p,idx)=>{
+      const on=active.includes(idx);
+      p.setAttribute("stroke", on?"var(--signal)":"var(--muted)");
+      p.setAttribute("marker-end", on?"url(#ah-hot)":"url(#ah)");
+      p.setAttribute("opacity",(state.walk!==null&&!on)?"0.12":"1");
+      p.classList.toggle("flow",on);
+      p.style.strokeDasharray=on?"6 7":"none"; p.style.animation=on?"dash 1s linear infinite":"none";
+    });
+  }
+  const st=document.createElement("style"); st.textContent="@keyframes dash{to{stroke-dashoffset:-13}}"; document.head.appendChild(st);
+
+  // ---------- walk-through ----------
+  const NODE_IDS=["nodeInput","nodeKernel","opFx","opFh","specF","specH","opMul","specP","opInv","nodeOut"];
+  const WALK=[
+    {nodes:["nodeInput","nodeKernel"], arrows:[],
+     ix:"1 / 4", text:"Two things live in the <b>spatial</b> domain: the image <code>f(x,y)</code> and a small kernel <code>h(x,y)</code>. Edit any kernel weight to change what the filter does."},
+    {nodes:["nodeInput","nodeKernel","opFx","specF","opFh","specH"], arrows:[0,1,2,3],
+     ix:"2 / 4", text:"Take the Fourier transform of each. <code>F = ℱ{f}</code> and <code>H = ℱ{h}</code> live in the <b>frequency</b> domain — the panels show log-magnitude, DC at the centre. A blur kernel's spectrum is bright in the middle (it keeps low frequencies)."},
+    {nodes:["nodeInput","nodeKernel","opFx","specF","opFh","specH","opMul","specP"], arrows:[0,1,2,3,4,5,6],
+     ix:"3 / 4", text:"Now the key step: multiply the two spectra <b>pointwise</b>, <code>F·H</code>. Wherever the kernel's spectrum is small, those frequencies of the image are suppressed. No sliding window — just one multiplication per frequency."},
+    {nodes:NODE_IDS, arrows:[0,1,2,3,4,5,6,7,8],
+     ix:"4 / 4", text:"Transform the product back with <code>ℱ⁻¹</code>. The result is exactly <code>f ∗ h</code> — the convolved image. That equivalence, multiplication in frequency = convolution in space, is the convolution theorem, and it's why FFT-based convolution is fast."},
+  ];
+  const capIx=$("#capIx"), capText=$("#capText");
+  const wStart=$("#walkStart"), wPrev=$("#walkPrev"), wNext=$("#walkNext"), wExit=$("#walkExit");
+  function applyWalk(){
+    const active=state.walk===null?null:WALK[state.walk].nodes;
+    NODE_IDS.forEach(id=>{ const el=$("#"+id);
+      el.classList.toggle("dim", active!==null && !active.includes(id));
+      el.classList.toggle("hot", active!==null && active.includes(id) && active[active.length-1]===id); });
+    if(state.walk===null){
+      capIx.hidden=true; capText.innerHTML="Full pipeline running. Change the kernel and watch its spectrum, the product, and the output all respond together.";
+      wStart.hidden=false; wPrev.hidden=wNext.hidden=wExit.hidden=true;
+    } else {
+      const s=WALK[state.walk]; capIx.hidden=false; capIx.textContent="step "+s.ix; capText.innerHTML=s.text;
+      wStart.hidden=true; wExit.hidden=false; wPrev.hidden=false; wNext.hidden=false;
+      wPrev.disabled=state.walk===0; wPrev.style.opacity=state.walk===0?.4:1;
+      wNext.textContent=state.walk===WALK.length-1?"Finish ▶":"Next ▶";
+    }
+    styleWires();
+  }
+  wStart.addEventListener("click",()=>{state.walk=0;applyWalk();});
+  wPrev.addEventListener("click",()=>{if(state.walk>0){state.walk--;applyWalk();}});
+  wNext.addEventListener("click",()=>{if(state.walk<WALK.length-1){state.walk++;applyWalk();}else{state.walk=null;applyWalk();}});
+  wExit.addEventListener("click",()=>{state.walk=null;applyWalk();});
+
+  // ---------- UI ----------
+  function setStatus(t,c){ statusText.textContent=t; statusDot.className="dot"+(c?" "+c:""); }
+  function syncFreeze(){ const b=$("#freezeBtn"); b.setAttribute("aria-pressed",state.frozen);
+    if(state.stream||state.frozenData) setStatus(state.frozen?"frozen":"live", state.frozen?"frozen":"live"); }
+
+  $("#startBtn").addEventListener("click",startCamera);
+  $("#startBtn2").addEventListener("click",startCamera);
+  $("#patternBtn").addEventListener("click",useTestPattern);
+  $("#patternBtn2").addEventListener("click",useTestPattern);
+  $("#stopBtn").addEventListener("click",stopCamera);
+  $("#freezeBtn").addEventListener("click",()=>{
+    if(!state.running&&!state.frozenData) return;
+    if(!state.frozen){ if(work.width) state.frozenData=wctx.getImageData(0,0,work.width,work.height); state.frozen=true; }
+    else { state.frozen=false; state.frozenData=null; }
+    syncFreeze();
+  });
+  $("#gain").addEventListener("input",e=>{ state.gain=parseFloat(e.target.value); $("#gainV").textContent=state.gain.toFixed(1); });
+  $("#win").addEventListener("change",e=>{ state.window=e.target.checked; });
+  $("#dc").addEventListener("change",e=>{ state.dcRemove=e.target.checked; });
+  $("#blur").addEventListener("change",e=>{ state.blur=e.target.checked; });
+  $("#preset").addEventListener("change",e=>{ state.kernel=PRESETS[e.target.value].slice(); buildKernelGrid(); state.kernelDirty=true; });
+  $("#knorm").addEventListener("change",e=>{ state.norm=e.target.checked; state.kernelDirty=true; });
+  $("#res").addEventListener("change",e=>{ state.N=parseInt(e.target.value);
+    if(state.frozenData&&!state.stream) useTestPattern(); });
+
+  window.addEventListener("keydown",e=>{
+    if(/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+    if(e.code==="Space"){ e.preventDefault(); $("#freezeBtn").click(); }
+    else if(e.key==="ArrowRight"){ if(state.walk===null) wStart.click(); else wNext.click(); }
+    else if(e.key==="ArrowLeft"){ if(state.walk!==null) wPrev.click(); }
+    else if(e.key==="Escape"){ if(state.walk!==null) wExit.click(); }
+  });
+
+  const ro=new ResizeObserver(()=>drawWires()); ro.observe(diagram); window.addEventListener("resize",drawWires);
+
+  // init
+  buildKernelGrid(); alloc(state.N);
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    overlayMsg.innerHTML="This browser doesn't expose <code>getUserMedia</code>. Use the test pattern to explore every stage.";
+  }
+  requestAnimationFrame(drawWires);
+})();
+</script>
+</body>
+</html>
