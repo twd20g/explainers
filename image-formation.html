@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Formation — pinhole & lens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#10141a; --panel:#171c24; --panel-2:#1e242e;
+    --line:#2a3340; --line-soft:#222933;
+    --ink:#edebe4; --muted:#7e8996; --muted-2:#59626e;
+    --signal:#46d6c0; --signal-dim:rgba(70,214,192,.14);
+    --amber:#e7a44c; --amber-dim:rgba(231,164,76,.14);
+    --coral:#e56a5a;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 12px 34px rgba(0,0,0,.45);
+    --disp:"Space Grotesk",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace; --body:"Inter",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:radial-gradient(1200px 700px at 78% -10%, #182029 0%, var(--bg) 60%);color:var(--ink);font-family:var(--body);line-height:1.5;min-height:100vh;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono)}
+  header.bench{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:15px 22px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(23,28,36,.9),rgba(16,20,26,.6))}
+  .brand{display:flex;align-items:baseline;gap:12px;margin-right:auto;flex-wrap:wrap}
+  .brand h1{font-family:var(--disp);font-weight:700;font-size:19px;letter-spacing:-.01em;margin:0}
+  .brand .tag{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase}
+
+  .controls{display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:12px 22px;border-bottom:1px solid var(--line);max-width:1320px;margin:0 auto}
+  .ctl{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.02em}
+  .ctl b{color:var(--ink);min-width:34px;display:inline-block}
+  input[type=range]{width:130px;-webkit-appearance:none;height:4px;border-radius:3px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--signal);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-radius:50%;background:var(--signal);cursor:pointer}
+  input[type=range]:disabled{opacity:.4}
+  select{font-family:var(--mono);font-size:12px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+  label.chk{display:flex;gap:7px;align-items:center;cursor:pointer}
+  .sep{width:1px;align-self:stretch;background:var(--line)}
+  button{font-family:var(--body);cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);font-size:12.5px;padding:7px 11px;transition:border-color .15s,background .15s,color .15s}
+  button:hover{border-color:var(--muted)}
+  button:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  .presets{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 22px 2px;max-width:1320px;margin:0 auto}
+  .presets span{font-family:var(--mono);font-size:10px;color:var(--muted-2);letter-spacing:.1em;text-transform:uppercase;margin-right:2px}
+
+  .stage{max-width:1320px;margin:14px auto 0;padding:0 22px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+  canvas{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
+
+  .readout{max-width:1320px;margin:14px auto 0;padding:0 22px;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .card h3{margin:0 0 8px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:7px}
+  .card .sw{width:10px;height:10px;border-radius:50%}
+  .card .row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;margin:3px 0}
+  .card .row span{color:var(--muted)} .card .row b{color:var(--ink);font-weight:600}
+  .tagline{font-size:11px;color:var(--muted);margin-top:3px}
+
+  .caption{max-width:1320px;margin:16px auto 0;padding:12px 22px;display:flex;gap:14px;align-items:flex-start}
+  .caption .chip{font-family:var(--mono);font-size:11px;color:var(--signal);border:1px solid var(--signal);border-radius:20px;padding:3px 11px;white-space:nowrap}
+  .caption p{margin:0;font-size:14px;color:var(--ink);max-width:110ch}
+  .caption code{color:var(--amber)}
+  .foot{max-width:1320px;margin:6px auto 0;padding:8px 24px 40px;color:var(--muted-2);font-size:12px;font-family:var(--mono);line-height:1.7}
+  .foot b{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header class="bench">
+  <div class="brand"><h1>Image Formation</h1><span class="tag">pinhole · aperture · lens</span></div>
+  <div class="ctl" style="color:var(--muted-2)">planar slice — drag the image plane, or use the sliders</div>
+</header>
+
+<div class="controls">
+  <div class="ctl"><label for="plane">image plane</label><input type="range" id="plane" min="70" max="311" value="180"><b id="planeV">180</b></div>
+  <div class="ctl"><label for="ap">aperture</label><input type="range" id="ap" min="2" max="100" value="6"><b id="apV">6</b></div>
+  <span class="sep"></span>
+  <div class="ctl"><label for="lens">optics</label>
+    <select id="lens"><option value="none" selected>pinhole (no lens)</option><option value="lens">thin lens</option></select>
+  </div>
+  <div class="ctl"><label for="foc">focal f</label><input type="range" id="foc" min="70" max="200" value="120" disabled><b id="focV">120</b></div>
+  <span class="sep"></span>
+  <label class="ctl chk"><input type="checkbox" id="rays" checked> construction rays</label>
+</div>
+<div class="presets">
+  <span>presets</span>
+  <button data-preset="pinhole">Pinhole · sharp &amp; dim</button>
+  <button data-preset="wide">Wide aperture · bright &amp; blurred</button>
+  <button data-preset="focusA">Lens · focus far candle</button>
+  <button data-preset="focusB">Lens · focus near candle</button>
+</div>
+
+<div class="stage"><div class="panel"><canvas id="c"></canvas></div></div>
+
+<div class="readout">
+  <div class="card">
+    <h3><span class="sw" style="background:var(--amber)"></span> Candle A · far / low</h3>
+    <div class="row"><span>object distance</span><b id="aDist">—</b></div>
+    <div class="row"><span>magnification</span><b id="aMag">—</b></div>
+    <div class="row"><span>blur (CoC)</span><b id="aBlur">—</b></div>
+  </div>
+  <div class="card">
+    <h3><span class="sw" style="background:var(--signal)"></span> Candle B · near / high</h3>
+    <div class="row"><span>object distance</span><b id="bDist">—</b></div>
+    <div class="row"><span>magnification</span><b id="bMag">—</b></div>
+    <div class="row"><span>blur (CoC)</span><b id="bBlur">—</b></div>
+  </div>
+  <div class="card">
+    <h3>System</h3>
+    <div class="row"><span>light gathered</span><b id="light">—</b></div>
+    <div class="row"><span>optics</span><b id="opt">pinhole</b></div>
+    <div class="row"><span id="focLbl">in focus</span><b id="focus">—</b></div>
+    <div class="tagline" id="tag"></div>
+  </div>
+</div>
+
+<div class="caption">
+  <span class="chip" id="chip">pinhole</span>
+  <p id="cap"></p>
+</div>
+
+<p class="foot">
+  A cross-section of a camera. Rays from each candle's flame travel in straight lines; only those passing through the opening reach the image plane, where the picture forms <b>upside-down</b>. <b>Move the plane</b> and the image grows or shrinks (magnification = plane distance ÷ object distance). <b>Widen the aperture</b> and every object point spreads into a blur circle — brighter, because more light gets through, but fuzzy. <b>Add a lens</b> and it bends that wide bundle back to a point, so you get brightness *and* sharpness — but only for objects at one distance, so the two candles can't both be crisp at once (depth of field). The chief ray through the centre is undeviated, which is why the lens changes focus but not image position or size.
+</p>
+
+<script>
+(function(){
+  "use strict";
+  const $=s=>document.querySelector(s);
+  const canvas=$("#c"), ctx=canvas.getContext("2d");
+
+  // logical drawing size
+  const LW=1060, LH=560, axis=286;
+  const sceneL=64, sceneR=996, sceneW=sceneR-sceneL;
+  const x_pin=sceneL+(2/3)*sceneW;            // pinhole 2/3 across
+  // two candles: A far/low (left, below axis), B near/high (right of A, above axis)
+  const A={x:120, yF:366, yB:426, col:"#e7a44c", rgb:"231,164,76"};
+  const B={x:437, yF:146, yB:206, col:"#46d6c0", rgb:"70,214,192"};
+
+  const state={ dimg:180, ap:6, lens:false, f:120, rays:true };
+
+  function setupCanvas(){
+    const dpr=Math.min(2,window.devicePixelRatio||1);
+    canvas.width=LW*dpr; canvas.height=LH*dpr; canvas.style.aspectRatio=LW+"/"+LH;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+
+  // ---- geometry ----
+  function chief(xo,yo,dimg){ const s_o=x_pin-xo; return axis-(dimg/s_o)*(yo-axis); }
+  function lensFocus(xo,yo){ const s_o=x_pin-xo, f=state.f; const s_i=f*s_o/(s_o-f); return {s_i,Xf:x_pin+s_i,Yf:axis-(s_i/s_o)*(yo-axis)}; }
+  function landPinhole(xo,yo,ya,dimg){ const x_img=x_pin+dimg, t=(x_img-xo)/(x_pin-xo); return yo+t*(ya-yo); }
+  function landLens(xo,yo,ya,dimg){ const {s_i,Xf,Yf}=lensFocus(xo,yo); const slope=(Yf-ya)/(Xf-x_pin); return ya+slope*dimg; }
+
+  // ---- drawing helpers ----
+  function line(x1,y1,x2,y2,stroke,w,dash){ ctx.save(); ctx.strokeStyle=stroke; ctx.lineWidth=w||1; if(dash)ctx.setLineDash(dash); ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); ctx.restore(); }
+  function drawCandle(c){
+    const w=13, x=c.x;
+    // body
+    ctx.fillStyle="#efe9db"; ctx.fillRect(x-w/2,c.yF,w,c.yB-c.yF);
+    ctx.fillStyle="rgba(0,0,0,.12)"; ctx.fillRect(x+w/2-3,c.yF,3,c.yB-c.yF);
+    // wick
+    ctx.strokeStyle="#3a3a3a"; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(x,c.yF); ctx.lineTo(x,c.yF-5); ctx.stroke();
+    // flame
+    const fy=c.yF-11; const g=ctx.createRadialGradient(x,fy,1,x,fy,16); g.addColorStop(0,"#fff2c0"); g.addColorStop(.5,"#ffb347"); g.addColorStop(1,"rgba(255,140,50,0)");
+    ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(x,fy,9,15,0,0,7); ctx.fill();
+    ctx.fillStyle="#ffd27a"; ctx.beginPath(); ctx.ellipse(x,fy,3.5,7,0,0,7); ctx.fill();
+    return {tip:c.yF-6, base:c.yB}; // project flame region top and candle base
+  }
+  function drawImageCandle(xImg,yTip,yBase,col,coc,alpha,mag){
+    // Blur via the shadow trick — draw the shape far off-canvas in device space and
+    // show only its blurred shadow at xImg. Works where canvas ctx.filter doesn't (Safari).
+    const dpr=Math.min(2,window.devicePixelRatio||1), off=8000;
+    const blur=Math.max(0.4,Math.min(60,coc*dpr)), lw=Math.max(2.5,12*mag)*dpr;
+    const X=xImg*dpr, YT=yTip*dpr, YB=yBase*dpr;
+    ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+    ctx.globalAlpha=alpha; ctx.shadowOffsetX=off; ctx.shadowOffsetY=0; ctx.shadowBlur=blur; ctx.lineCap="round";
+    // body
+    ctx.shadowColor=col; ctx.strokeStyle=col; ctx.lineWidth=lw;
+    ctx.beginPath(); ctx.moveTo(X-off,YB); ctx.lineTo(X-off,YT); ctx.stroke();
+    // flame
+    ctx.shadowColor="#ffb454"; ctx.fillStyle="#ffb454";
+    ctx.beginPath(); ctx.ellipse(X-off,YT,Math.max(3,7*mag)*dpr,Math.max(5,11*mag)*dpr,0,0,7); ctx.fill();
+    ctx.restore();
+  }
+
+  function render(){
+    const dimg=state.dimg, a=state.ap, x_img=x_pin+dimg;
+    ctx.clearRect(0,0,LW,LH);
+
+    // optical axis
+    line(sceneL-6,axis,sceneR+6,axis,"rgba(126,137,150,.35)",1,[6,6]);
+    ctx.fillStyle="var(--muted)"; ctx.fillStyle="#7e8996"; ctx.font="10px 'IBM Plex Mono',monospace";
+    ctx.fillText("optical axis",sceneL-4,axis-6);
+
+    // candles + their projected points
+    const ptsA=drawCandle(A), ptsB=drawCandle(B);
+
+    // ---- rays ----
+    const cands=[{c:A,pts:ptsA},{c:B,pts:ptsB}];
+    if(state.rays){
+      for(const {c,pts} of cands){
+        const col="rgba("+c.rgb+",";
+        // chief rays for tip and base (through centre) -> show inversion
+        for(const yo of [pts.tip,pts.base]){
+          const yImg=chief(c.x,yo,dimg);
+          line(c.x,yo,x_pin,axis,col+".9)",1.4);
+          line(x_pin,axis,x_img,yImg,col+".9)",1.4);
+        }
+        // marginal cone from the flame tip through the aperture edges
+        const yo=pts.tip, top=axis-a/2, bot=axis+a/2;
+        let lt,lb;
+        if(state.lens){ lt=landLens(c.x,yo,top,dimg); lb=landLens(c.x,yo,bot,dimg);
+          const {Xf,Yf}=lensFocus(c.x,yo);
+          // incoming to lens edges, then bent through focus to the plane
+          line(c.x,yo,x_pin,top,col+".5)",1); line(c.x,yo,x_pin,bot,col+".5)",1);
+          line(x_pin,top,x_img,lt,col+".5)",1); line(x_pin,bot,x_img,lb,col+".5)",1);
+          // faint marker at the true focus
+          ctx.save(); ctx.fillStyle=col+".8)"; ctx.beginPath(); ctx.arc(Xf,Yf,2.5,0,7); ctx.fill(); ctx.restore();
+        } else {
+          lt=landPinhole(c.x,yo,top,dimg); lb=landPinhole(c.x,yo,bot,dimg);
+          line(c.x,yo,x_pin,top,col+".5)",1); line(c.x,yo,x_pin,bot,col+".5)",1);
+          line(x_pin,top,x_img,lt,col+".5)",1); line(x_pin,bot,x_img,lb,col+".5)",1);
+        }
+        // fill the blur cone between the marginal landings
+        ctx.save(); ctx.fillStyle=col+".10)"; ctx.beginPath();
+        ctx.moveTo(c.x,yo); ctx.lineTo(x_pin,top); ctx.lineTo(x_img,lt); ctx.lineTo(x_img,lb); ctx.lineTo(x_pin,bot); ctx.closePath(); ctx.fill(); ctx.restore();
+      }
+    }
+
+    // ---- aperture wall (with gap) — light + thin, matching the image plane ----
+    const gapTop=axis-a/2, gapBot=axis+a/2, wallCol="rgba(237,235,228,.5)";
+    line(x_pin,10,x_pin,gapTop,wallCol,2);
+    line(x_pin,gapBot,x_pin,LH-16,wallCol,2);
+    ctx.fillStyle="#7e8996"; ctx.font="11px 'IBM Plex Mono',monospace"; ctx.fillText("aperture",x_pin+7,40);
+
+    // ---- lens ----
+    if(state.lens){
+      const ly=a/2+8; // lens half-height (a bit beyond aperture)
+      ctx.save(); ctx.beginPath();
+      ctx.moveTo(x_pin,axis-ly); ctx.quadraticCurveTo(x_pin+11,axis,x_pin,axis+ly);
+      ctx.quadraticCurveTo(x_pin-11,axis,x_pin,axis-ly); ctx.closePath();
+      const lg=ctx.createLinearGradient(x_pin-11,0,x_pin+11,0);
+      lg.addColorStop(0,"rgba(120,180,255,.10)"); lg.addColorStop(.5,"rgba(150,200,255,.30)"); lg.addColorStop(1,"rgba(120,180,255,.10)");
+      ctx.fillStyle=lg; ctx.fill(); ctx.strokeStyle="rgba(160,205,255,.7)"; ctx.lineWidth=1.5; ctx.stroke(); ctx.restore();
+      // focal points
+      for(const fx of [x_pin-state.f,x_pin+state.f]){ ctx.fillStyle="rgba(160,205,255,.9)"; ctx.beginPath(); ctx.arc(fx,axis,3,0,7); ctx.fill();
+        ctx.fillStyle="#8fb8e8"; ctx.font="10px 'IBM Plex Mono',monospace"; ctx.fillText("F",fx-3,axis+16); }
+    }
+
+    // ---- image plane ----
+    line(x_img,26,x_img,LH-16,"rgba(237,235,228,.5)",2);
+    ctx.fillStyle="#edebe4"; ctx.font="11px 'IBM Plex Mono',monospace"; ctx.fillText("image plane",x_img+7,40);
+    // drag hint handle
+    ctx.fillStyle="rgba(237,235,228,.5)"; ctx.fillRect(x_img-4,axis-1,8,2);
+
+    // ---- formed images ----
+    const alpha=Math.max(.28,Math.min(1,.28+a/120));
+    const info={};
+    for(const {c,pts} of cands){
+      const s_o=x_pin-c.x, mag=dimg/s_o;
+      const yTip=chief(c.x,pts.tip,dimg), yBase=chief(c.x,pts.base,dimg);
+      const top=axis-a/2, bot=axis+a/2;
+      let mt,mb;
+      if(state.lens){ mt=landLens(c.x,pts.tip,top,dimg); mb=landLens(c.x,pts.tip,bot,dimg); }
+      else { mt=landPinhole(c.x,pts.tip,top,dimg); mb=landPinhole(c.x,pts.tip,bot,dimg); }
+      const coc=Math.abs(mt-mb)/2;
+      drawImageCandle(x_img,yTip,yBase,c.col,coc,alpha,mag);
+      info[c===A?"A":"B"]={s_o,mag,coc};
+    }
+
+    // "inverted" bracket
+    ctx.fillStyle="#7e8996"; ctx.font="10px 'IBM Plex Mono',monospace";
+    ctx.fillText("inverted image",x_img+7,LH-24);
+
+    updateReadout(info);
+  }
+
+  function updateReadout(info){
+    const fmt=v=>v.toFixed(0);
+    $("#aDist").textContent=fmt(info.A.s_o)+" px"; $("#aMag").textContent="×"+info.A.mag.toFixed(2); $("#aBlur").textContent=info.A.coc.toFixed(1)+" px";
+    $("#bDist").textContent=fmt(info.B.s_o)+" px"; $("#bMag").textContent="×"+info.B.mag.toFixed(2); $("#bBlur").textContent=info.B.coc.toFixed(1)+" px";
+    const a=state.ap; $("#light").textContent = a<12?"low":a<45?"medium":"high";
+    $("#opt").textContent = state.lens?("thin lens f="+state.f):"pinhole";
+    // focus
+    let chip,cap,focus="—";
+    if(state.lens){
+      const dA=Math.abs(lensFocus(A.x,A.yF).s_i-state.dimg), dB=Math.abs(lensFocus(B.x,B.yF).s_i-state.dimg);
+      const near=Math.min(dA,dB);
+      focus = near>18 ? "neither (between)" : (dA<dB?"candle A (far)":"candle B (near)");
+      $("#focLbl").textContent="in focus";
+      chip="lens";
+      cap="The lens bends the wide bundle back toward a point. Whichever candle sits at the focused distance is sharp and bright; the other, at a different depth, blurs. That's <code>depth of field</code> — slide the plane and watch focus pass from one candle to the other.";
+    } else {
+      $("#focLbl").textContent="in focus"; focus = a<10?"both (pinhole)":"neither (blurred)";
+      if(a<10){ chip="pinhole"; cap="A tiny pinhole makes every point project to (almost) a point, so <b>both</b> candles are sharp regardless of depth — but it passes very little light, so a real pinhole image is dim. Widen the aperture to gather more light."; }
+      else { chip="wide aperture"; cap="Widening the hole lets in far more light, but now each object point fans out through the whole opening and lands as a <b>blur circle</b>. Brighter, but fuzzy — the classic pinhole trade-off. Drop in a lens to rescue the sharpness."; }
+    }
+    $("#focus").textContent=focus; $("#chip").textContent=chip; $("#cap").innerHTML=cap;
+    $("#tag").textContent = "image size ∝ plane distance ÷ object distance";
+  }
+
+  // ---- controls ----
+  function sync(){ $("#planeV").textContent=state.dimg; $("#apV").textContent=state.ap; $("#focV").textContent=state.f;
+    $("#plane").value=state.dimg; $("#ap").value=state.ap; $("#foc").value=state.f; $("#foc").disabled=!state.lens; $("#lens").value=state.lens?"lens":"none"; $("#rays").checked=state.rays; }
+  $("#plane").addEventListener("input",e=>{ state.dimg=parseInt(e.target.value); $("#planeV").textContent=state.dimg; render(); });
+  $("#ap").addEventListener("input",e=>{ state.ap=parseInt(e.target.value); $("#apV").textContent=state.ap; render(); });
+  $("#foc").addEventListener("input",e=>{ state.f=parseInt(e.target.value); $("#focV").textContent=state.f; render(); });
+  $("#lens").addEventListener("change",e=>{ state.lens=(e.target.value==="lens"); $("#foc").disabled=!state.lens; render(); });
+  $("#rays").addEventListener("change",e=>{ state.rays=e.target.checked; render(); });
+  document.querySelectorAll(".presets button").forEach(b=>b.addEventListener("click",()=>{
+    const p=b.dataset.preset;
+    if(p==="pinhole"){ state.lens=false; state.ap=5; state.dimg=180; }
+    else if(p==="wide"){ state.lens=false; state.ap=72; state.dimg=180; }
+    else if(p==="focusA"){ state.lens=true; state.ap=72; state.f=120; state.dimg=Math.round(lensFocus(A.x,A.yF).s_i); }
+    else if(p==="focusB"){ state.lens=true; state.ap=72; state.f=120; state.dimg=Math.round(lensFocus(B.x,B.yF).s_i); }
+    state.dimg=Math.max(70,Math.min(311,state.dimg));
+    sync(); render();
+  }));
+
+  // ---- drag the image plane ----
+  let dragging=false;
+  function toLocalX(clientX){ const r=canvas.getBoundingClientRect(); return (clientX-r.left)/r.width*LW; }
+  canvas.addEventListener("pointerdown",e=>{ const lx=toLocalX(e.clientX); if(Math.abs(lx-(x_pin+state.dimg))<16){ dragging=true; canvas.setPointerCapture(e.pointerId); } });
+  canvas.addEventListener("pointermove",e=>{ if(!dragging)return; const lx=toLocalX(e.clientX); state.dimg=Math.max(70,Math.min(311,Math.round(lx-x_pin))); $("#plane").value=state.dimg; $("#planeV").textContent=state.dimg; render(); });
+  canvas.addEventListener("pointerup",()=>dragging=false);
+  canvas.addEventListener("pointercancel",()=>dragging=false);
+
+  window.addEventListener("resize",()=>{ setupCanvas(); render(); });
+  setupCanvas(); sync(); render();
+})();
+</script>
+</body>
+</html>
