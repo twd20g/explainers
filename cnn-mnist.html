@@ -147,7 +147,7 @@ const MODEL = {"F": 4, "G": 4, "w": 7, "D": 64, "K": [[2.520750045776367, -0.472
       ctx.fillStyle="rgb("+col[0]+","+col[1]+","+col[2]+")"; ctx.fillRect(x+c*cs,y+r*cs,Math.ceil(cs),Math.ceil(cs)); }
     ctx.strokeStyle="rgba(42,51,64,.9)"; ctx.lineWidth=1; ctx.strokeRect(x+.5,y+.5,size-1,size-1); }
   function kernelTile(ctx,x,y,size,kern){ const cs=size/3; let mx=1e-6; for(const v of kern) if(Math.abs(v)>mx)mx=Math.abs(v);
-    ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font="9px 'IBM Plex Mono',monospace";
+    ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font="7px 'IBM Plex Mono',monospace";
     for(let k=0;k<9;k++){ const r=(k/3|0),c=k%3, col=signedColor(kern[k],mx);
       ctx.fillStyle="rgb("+col[0]+","+col[1]+","+col[2]+")"; ctx.fillRect(x+c*cs,y+r*cs,Math.ceil(cs),Math.ceil(cs));
       ctx.fillStyle="rgba(0,0,0,.5)"; ctx.fillText(kern[k].toFixed(1),x+c*cs+cs/2+.5,y+r*cs+cs/2+.5);
@@ -222,8 +222,7 @@ const MODEL = {"F": 4, "G": 4, "w": 7, "D": 64, "K": [[2.520750045776367, -0.472
     // preview
     const pv=$("#prev"),pc=pv.getContext("2d"),im=pc.createImageData(28,28);
     for(let i=0;i<784;i++){ const c=actColor(img[i],1); im.data[i*4]=c[0];im.data[i*4+1]=c[1];im.data[i*4+2]=c[2];im.data[i*4+3]=255; }
-    const t=document.createElement("canvas"); t.width=28;t.height=28; t.getContext("2d").putImageData(im,0,0);
-    pc.imageSmoothingEnabled=false; pc.clearRect(0,0,84,84); pc.drawImage(t,0,0,84,84);
+    pc.putImageData(im,0,0);
     const sorted=[...o.probs].map((p,i)=>[p,i]).sort((a,b)=>b[0]-a[0]);
     $("#chip").textContent="predicts "+o.pred;
     $("#cap").innerHTML="Read a digit's column top-down: its four weight patches (one per filter) score the pooled activations; the products below are what's actually added. Summed over all four filters they give digit <code>"+o.pred+"</code> the highest score ("+(o.probs[o.pred]*100).toFixed(0)+"%), ahead of <code>"+sorted[1][1]+"</code>.";
