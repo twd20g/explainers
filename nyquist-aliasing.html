@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nyquist Sampling & Aliasing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#10141a; --panel:#171c24; --panel-2:#1e242e; --line:#2a3340; --line-soft:#222933;
+    --ink:#edebe4; --muted:#7e8996; --muted-2:#59626e;
+    --signal:#46d6c0; --signal-dim:rgba(70,214,192,.14); --amber:#e7a44c; --amber-dim:rgba(231,164,76,.14); --coral:#e56a5a;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 12px 34px rgba(0,0,0,.45);
+    --disp:"Space Grotesk",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace; --body:"Inter",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:radial-gradient(1200px 700px at 78% -10%, #182029 0%, var(--bg) 60%);color:var(--ink);font-family:var(--body);line-height:1.5;min-height:100vh;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono)}
+  header.bench{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:15px 22px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(23,28,36,.9),rgba(16,20,26,.6))}
+  .brand{display:flex;align-items:baseline;gap:12px;margin-right:auto;flex-wrap:wrap}
+  .brand h1{font-family:var(--disp);font-weight:700;font-size:19px;letter-spacing:-.01em;margin:0}
+  .brand .tag{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase}
+
+  .wrap{max-width:1360px;margin:20px auto;padding:0 20px}
+  .stage{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:stretch}
+  @media (max-width:900px){ .stage{grid-template-columns:1fr} }
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+  .panel .body{padding:14px 16px}
+  canvas{display:block;width:100%;height:auto}
+
+  .desc h3{margin:0 0 4px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .desc .big{font-family:var(--disp);font-weight:600;font-size:15px;margin:2px 0 12px}
+  .desc .big b{color:var(--signal)}
+  .desc .regime{font-size:14px;color:var(--ink);min-height:96px}
+  .desc .regime code{color:var(--amber)}
+  .desc .meta{margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft);font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.9}
+  .desc .meta b{color:var(--ink)}
+  .stagechip{display:inline-block;font-family:var(--mono);font-size:10.5px;color:var(--signal);border:1px solid var(--signal);border-radius:20px;padding:2px 10px;margin-bottom:10px;letter-spacing:.04em}
+
+  .controls{margin-top:16px;display:flex;flex-direction:column;gap:10px}
+  .freqrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .freqrow .lbl{font-family:var(--mono);font-size:10px;color:var(--muted-2);letter-spacing:.08em;text-transform:uppercase;margin-right:2px}
+  button{font-family:var(--body);cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);font-size:13px;padding:8px 12px;transition:border-color .15s,background .15s,color .15s}
+  button:hover{border-color:var(--muted)} button:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  .fbtn{font-family:var(--mono);min-width:52px;text-align:center;position:relative}
+  .fbtn small{display:block;font-size:9px;color:var(--muted-2);margin-top:1px}
+  .fbtn[aria-pressed="true"]{background:var(--signal-dim);border-color:var(--signal);color:var(--signal)}
+  .fbtn[aria-pressed="true"] small{color:var(--signal)}
+  .fbtn.nyq{border-color:rgba(231,164,76,.5)}
+  .fbtn.chirp[aria-pressed="true"]{background:var(--amber-dim);border-color:var(--amber);color:var(--amber)}
+  .fbtn.chirp[aria-pressed="true"] small{color:var(--amber)}
+  button.primary{background:var(--signal-dim);border-color:var(--signal);color:var(--signal);font-weight:600}
+  .divmark{width:1px;height:30px;background:var(--amber);opacity:.5;margin:0 2px}
+
+  .foot{max-width:1360px;margin:14px auto 0;padding:8px 24px 40px;color:var(--muted-2);font-size:12px;font-family:var(--mono);line-height:1.7} .foot b{color:var(--muted)}
+</style>
+</head>
+<body>
+<header class="bench">
+  <div class="brand"><h1>Nyquist Sampling &amp; Aliasing</h1><span class="tag">sample · discard · reconstruct</span></div>
+</header>
+
+<main class="wrap">
+  <div class="stage">
+    <section class="panel"><div class="body"><canvas id="c"></canvas></div></section>
+    <section class="panel desc"><div class="body">
+      <span class="stagechip" id="stagechip">signal</span>
+      <h3>reconstruction</h3>
+      <div class="big" id="freqline">—</div>
+      <div class="regime" id="regime"></div>
+      <div class="meta">
+        <div>sampling rate&nbsp; <b id="fsV">16</b> / window</div>
+        <div>Nyquist limit&nbsp; <b id="nyqV">8</b> cycles</div>
+        <div>samples / cycle&nbsp; <b id="spcV">—</b></div>
+      </div>
+    </div></section>
+  </div>
+
+  <div class="controls">
+    <div class="freqrow"><span class="lbl">frequency · cycles across the window</span></div>
+    <div class="freqrow" id="freqBtns"></div>
+    <div class="freqrow"><button class="primary" id="replay">↻ Replay sequence</button></div>
+  </div>
+</main>
+
+<p class="foot">
+  The sampler measures the wave at a fixed rate (the ticks on the axis). <b>Below Nyquist</b> — more than two samples per cycle — the dots pin the wave down and it reconstructs exactly. <b>At Nyquist</b> (two samples per cycle) you are at the edge. <b>Above Nyquist</b> the samples are too sparse: they are identical to the samples of a slower wave, so the only thing you can reconstruct is that slower <b>alias</b> — a high frequency masquerading as a low one. Notice that a wave of <code>f</code> cycles and one of <code>16−f</code> cycles produce the very same dots.
+</p>
+
+<script>
+(function(){
+  "use strict";
+  const $=s=>document.querySelector(s);
+  const c=$("#c"), ctx=c.getContext("2d");
+  const LW=900, LH=300, PL=52, PR=22, PT=28, PB=42;
+  const axisY=PT+(LH-PT-PB)/2, plotW=LW-PL-PR, A=(LH-PT-PB)/2*0.82;
+  const Ns=16, NYQ=Ns/2;
+  const FREQS=[1,3,5,8,11,13,15];
+  const CH={f0:1,f1:15}, tCross=(NYQ-CH.f0)/(CH.f1-CH.f0);
+  const state={ mode:"sine", f:3, start:0, playing:false };
+  let sampleVals=[];
+
+  function setup(){ const dpr=Math.min(2,window.devicePixelRatio||1); c.width=LW*dpr; c.height=LH*dpr; c.style.aspectRatio=LW+"/"+LH; ctx.setTransform(dpr,0,0,dpr,0,0); }
+  const X=t=>PL+t*plotW, Y=v=>axisY-v;
+  const seg=(e,s,d)=>Math.max(0,Math.min(1,(e-s)/d));
+  const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+  const alias=f=>f<=NYQ?f:(Ns-f);
+  function chirpPhase(t){ return 2*Math.PI*(CH.f0*t + (CH.f1-CH.f0)*t*t/2); }
+  function sinc(x){ if(Math.abs(x)<1e-9) return 1; const p=Math.PI*x; return Math.sin(p)/p; }
+  function waveVal(t){ return state.mode==="chirp" ? A*Math.cos(chirpPhase(t)) : A*Math.cos(2*Math.PI*state.f*t); }
+  function reconVal(t){ if(state.mode==="chirp"){ let r=0; for(let n=0;n<=Ns;n++) r+=sampleVals[n]*sinc(Ns*(t-n/Ns)); return r; } return A*Math.cos(2*Math.PI*alias(state.f)*t); }
+  function buildSamples(){ sampleVals=[]; for(let n=0;n<=Ns;n++) sampleVals.push(waveVal(n/Ns)); }
+
+  const T={ waveIn:[0,700], sample:[1000,1000], fade:[2400,500], recon:[3200,1200] };
+  const END=4600;
+
+  function drawCurve(valFn,xprog,color,alpha,dash){
+    if(xprog<=0) return;
+    ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle=color; ctx.lineWidth=2.2; if(dash)ctx.setLineDash(dash);
+    ctx.beginPath(); const steps=640;
+    for(let i=0;i<=steps*xprog;i++){ const t=i/steps; const x=X(t),y=Y(valFn(t)); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+    ctx.stroke(); ctx.restore();
+  }
+
+  function draw(e){
+    ctx.clearRect(0,0,LW,LH);
+    const chirp=state.mode==="chirp", aliased=chirp||state.f>NYQ;
+
+    // region shading (chirp only)
+    if(chirp){
+      const xc=X(tCross), top=PT-6, h=LH-PT-PB+12;
+      ctx.fillStyle="rgba(70,214,192,.05)"; ctx.fillRect(PL,top,xc-PL,h);
+      ctx.fillStyle="rgba(231,164,76,.06)"; ctx.fillRect(xc,top,(LW-PR)-xc,h);
+      ctx.save(); ctx.strokeStyle="rgba(231,164,76,.6)"; ctx.setLineDash([4,4]); ctx.lineWidth=1.2; ctx.beginPath(); ctx.moveTo(xc,top); ctx.lineTo(xc,axisY+h/2-6); ctx.stroke(); ctx.restore();
+      ctx.font="10px 'IBM Plex Mono',monospace"; ctx.textAlign="center";
+      ctx.fillStyle="rgba(70,214,192,.85)"; ctx.fillText("oversampled",(PL+xc)/2,PT+2);
+      ctx.fillStyle="rgba(231,164,76,.9)"; ctx.fillText("undersampled · aliasing",(xc+(LW-PR))/2,PT+2);
+      ctx.fillStyle="#9c8a55"; ctx.fillText("f = Nyquist",xc,LH-PB+18);
+    }
+
+    // axis + sample ticks
+    ctx.strokeStyle="rgba(126,137,150,.5)"; ctx.lineWidth=1.2; ctx.beginPath(); ctx.moveTo(PL-8,axisY); ctx.lineTo(LW-PR+6,axisY); ctx.stroke();
+    ctx.strokeStyle="rgba(126,137,150,.28)"; ctx.lineWidth=1;
+    for(let n=0;n<=Ns;n++){ const x=X(n/Ns); ctx.beginPath(); ctx.moveTo(x,axisY-5); ctx.lineTo(x,axisY+5); ctx.stroke(); }
+    ctx.fillStyle="#59626e"; ctx.font="10px 'IBM Plex Mono',monospace"; ctx.textAlign="left"; ctx.fillText("time →",PL-8,axisY+26);
+
+    const pW=ease(seg(e,T.waveIn[0],T.waveIn[1])), pS=seg(e,T.sample[0],T.sample[1]);
+    const waveAlpha=1-seg(e,T.fade[0],T.fade[1]), pR=ease(seg(e,T.recon[0],T.recon[1]));
+
+    if(waveAlpha>0.001) drawCurve(waveVal, e<T.waveIn[1]?pW:1, "#46d6c0", waveAlpha, null);
+    if(aliased && pR>0) drawCurve(waveVal, pR, "rgba(70,214,192,.85)", 0.26, [4,5]);   // faint 'true' ghost
+    if(pR>0) drawCurve(reconVal, pR, "#e7a44c", 1, null);                              // reconstruction
+
+    // sample stems + dots
+    if(e>=T.sample[0]){
+      const front=pS*(Ns+2), full=e>=T.sample[0]+T.sample[1];
+      for(let n=0;n<=Ns;n++){ const t=n/Ns, v=sampleVals[n], g=full?1:Math.max(0,Math.min(1,front-n));
+        if(g<=0) continue; const x=X(t), y=Y(v*g);
+        ctx.strokeStyle="rgba(70,214,192,.55)"; ctx.lineWidth=1.6; ctx.beginPath(); ctx.moveTo(x,axisY); ctx.lineTo(x,y); ctx.stroke();
+        ctx.fillStyle="#5fe0cc"; ctx.beginPath(); ctx.arc(x,y,3.4,0,7); ctx.fill();
+      }
+    }
+
+    let stage;
+    if(e<T.sample[0]) stage="the signal";
+    else if(e<T.fade[0]) stage="sampling";
+    else if(e<T.recon[0]) stage="samples only";
+    else stage=aliased?"reconstruct → alias":"reconstruct";
+    $("#stagechip").textContent=stage;
+  }
+
+  let raf=null;
+  function frame(now){ const e=now-state.start; draw(e); if(e<END){ raf=requestAnimationFrame(frame); } else { draw(END); state.playing=false; raf=null; } }
+  function play(){ if(raf) cancelAnimationFrame(raf); state.start=performance.now(); state.playing=true; raf=requestAnimationFrame(frame); }
+
+  function updateDesc(){
+    if(state.mode==="chirp"){
+      $("#freqline").innerHTML="<b>Chirp</b> &nbsp;·&nbsp; "+CH.f0+" → "+CH.f1+" cycles";
+      $("#spcV").textContent=(Ns/CH.f0).toFixed(0)+" → "+(Ns/CH.f1).toFixed(1);
+      $("#regime").innerHTML="The frequency sweeps upward across the window. <b>Left</b> of the divider it stays below the Nyquist limit ("+NYQ+" cycles) — oversampled, and it reconstructs faithfully. <b>Right</b> of the divider it climbs above Nyquist — undersampled, so the reconstruction <b>folds back down</b>: the apparent frequency falls even as the true one keeps rising.";
+      return;
+    }
+    const f=state.f, fa=alias(f), spc=Ns/f;
+    $("#freqline").innerHTML="<b>"+f+"</b> cycles &nbsp;·&nbsp; "+spc.toFixed(spc<10?1:0)+" samples / cycle";
+    $("#spcV").textContent=spc.toFixed(2);
+    let r;
+    if(f<NYQ){ r = spc>=5
+      ? "Comfortably sampled — about "+spc.toFixed(1)+" samples per cycle, well below the Nyquist limit. The dots pin the wave down and it reconstructs <b>exactly</b>."
+      : "Only "+spc.toFixed(1)+" samples per cycle now, but still above the Nyquist limit of "+NYQ+" cycles — so the reconstruction is still <b>exact</b>."; }
+    else if(f===NYQ){ r = "Right at the <b>Nyquist limit</b>: exactly 2 samples per cycle. This is the fastest wave these samples can represent — any faster and information is lost."; }
+    else { r = "<b>Undersampled</b> — just "+spc.toFixed(2)+" samples per cycle, past Nyquist. These dots are identical to those of a <code>"+fa+"</code>-cycle wave, so the reconstruction <b>aliases</b> down to <code>"+fa+"</code> cycles. The true "+f+"-cycle wave is unrecoverable."; }
+    $("#regime").innerHTML=r;
+  }
+
+  const fb=$("#freqBtns");
+  function clearPressed(){ document.querySelectorAll(".fbtn").forEach(x=>x.setAttribute("aria-pressed","false")); }
+  FREQS.forEach((f,i)=>{
+    if(f>NYQ && FREQS[i-1]<=NYQ){ const d=document.createElement("span"); d.className="divmark"; d.title="Nyquist limit"; fb.appendChild(d); }
+    const b=document.createElement("button"); b.type="button"; b.className="fbtn"+(f===NYQ?" nyq":"");
+    b.innerHTML=f+"<small>"+(f===NYQ?"Nyquist":(f>NYQ?"→ "+alias(f):(Ns/f).toFixed(0)+"/cyc"))+"</small>";
+    b.setAttribute("aria-pressed", f===state.f&&state.mode==="sine");
+    b.addEventListener("click",()=>{ state.mode="sine"; state.f=f; clearPressed(); b.setAttribute("aria-pressed","true"); buildSamples(); updateDesc(); play(); });
+    fb.appendChild(b);
+  });
+  const dv=document.createElement("span"); dv.className="divmark"; dv.style.opacity=".3"; fb.appendChild(dv);
+  const cb=document.createElement("button"); cb.type="button"; cb.className="fbtn chirp"; cb.innerHTML="Chirp ↗<small>1 → 15</small>";
+  cb.addEventListener("click",()=>{ state.mode="chirp"; clearPressed(); cb.setAttribute("aria-pressed","true"); buildSamples(); updateDesc(); play(); });
+  fb.appendChild(cb);
+
+  $("#replay").addEventListener("click",play);
+  window.addEventListener("resize",()=>{ setup(); draw(state.playing?performance.now()-state.start:END); });
+
+  setup(); buildSamples(); updateDesc(); play();
+})();
+</script>
+</body>
+</html>
